@@ -244,6 +244,15 @@ RETURNING *;
 
 The seat claim, the request update and the event insert all happen in **one transaction**. If any of them fails, all of them are rolled back.
 
+### Why there's also a `SELECT ... FOR UPDATE` lock
+The conditional UPDATE is enough to protect **capacity**. It isn't enough to protect the **matching rule**. Suppose Bullet's pool has one member going to X, and two new requests arrive at once. Their destinations are each 2 km from X, but 4 km from each other. Each request is checked only against the members that were there when it started, so both pass their check, even though the two new riders aren't compatible with each other. So `joinPool` first locks the pool row (`SELECT ... FOR UPDATE`). It then reads the members, checks compatibility, and claims seats. Joins to the same pool happen one at a time, and each one sees the previous join's result.
+
+### Lock order
+Any code that changes a pooled ride locks the **pool row first, then the ride row**: joining, cancelling, and later the driver's transitions. If one transaction held the ride and waited for the pool while another held the pool and waited for the ride, Postgres would have to kill one of them with a deadlock error. Always locking in the same order makes that impossible.
+
+### How we know it works
+[pooling.test.ts](../api/test/pooling.test.ts) fires Nusrat's and Shirin's requests at the same moment for Bullet's last seat. It also sends 8 passengers at once for 2 seats. As a check, we swapped the atomic claim for a naive "read `seats_taken`, then write `seats_taken + 1`" and removed the CHECK constraint. **Both tests then failed.** Both women got the seat, and all 8 commuters got into a 3-seat Tesla. With the real code, both tests pass.
+
 Status transitions use the same pattern: `UPDATE ... WHERE id = $id AND status = $expected`. If two actions race (for example a double-clicked "Start trip"), exactly one of them succeeds and the other gets a `409`.
 
 **At larger scale:** hot pools in the same zone would compete for row locks. The next step would be to partition matching by zone, so each zone is handled by one worker reading from a queue. Requests would carry idempotency keys so retries are safe. The row-level guarantee here would stay the same. See the scaling notes in the README.

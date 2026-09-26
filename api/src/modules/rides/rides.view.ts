@@ -4,12 +4,22 @@ import { poolDiscountPaisa } from '../../domain/fare';
 export const passengerRideInclude = {
   pickup: true,
   dropoff: true,
+  pool: {
+    select: {
+      id: true,
+      status: true,
+      vehicle: { select: { name: true, plate: true, driver: { select: { name: true } } } },
+      // Only a count: a passenger never learns who else is in the Tesla or where they're going.
+      _count: { select: { members: { where: { status: { not: 'CANCELLED' } } } } },
+    },
+  },
 } satisfies Prisma.RideRequestInclude;
 
-type RideWithZones = Prisma.RideRequestGetPayload<{ include: typeof passengerRideInclude }>;
+type PassengerRide = Prisma.RideRequestGetPayload<{ include: typeof passengerRideInclude }>;
 
-// What a passenger sees about their OWN ride. Never includes other passengers' details.
-export function toPassengerRide(ride: RideWithZones) {
+// What a passenger sees about their OWN ride.
+export function toPassengerRide(ride: PassengerRide) {
+  const pool = ride.pool;
   return {
     id: ride.id,
     status: ride.status,
@@ -26,6 +36,14 @@ export function toPassengerRide(ride: RideWithZones) {
       poolDiscountPaisa: ride.poolDiscountPaisa,
       farePaisa: ride.farePaisa,
       isFinal: ride.farePaisa !== null,
+    },
+    pool: pool && {
+      id: pool.id,
+      status: pool.status,
+      vehicle: { name: pool.vehicle.name, plate: pool.vehicle.plate },
+      driver: { name: pool.vehicle.driver.name },
+      // Other passengers still in the Tesla (not counting this one).
+      sharedWith: Math.max(0, pool._count.members - (ride.status === 'CANCELLED' ? 0 : 1)),
     },
     createdAt: ride.createdAt,
     updatedAt: ride.updatedAt,

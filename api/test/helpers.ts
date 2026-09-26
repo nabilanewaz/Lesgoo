@@ -18,17 +18,32 @@ export async function resetDb() {
 export async function createDriver(
   name = 'Jashim',
   vehicle = { name: 'Bullet', plate: 'DHAKA-TESLA-01', capacity: 3 },
+  { online = false } = {},
 ) {
-  return prisma.user.create({
+  const driver = await prisma.user.create({
     data: {
       name,
       email: `${name.toLowerCase()}@teslapool.test`,
       passwordHash: await bcrypt.hash(PASSWORD, 4), // low cost rounds: fast tests
       role: 'DRIVER',
-      vehicle: { create: vehicle },
+      vehicle: { create: { ...vehicle, isOnline: online } },
     },
     include: { vehicle: true },
   });
+  return { ...driver, vehicle: driver.vehicle! };
+}
+
+// Jashim and Bullet, online and ready at Banani Road 11.
+export const createJashimOnline = () => createDriver('Jashim', undefined, { online: true });
+
+export async function requestRide(
+  agent: Awaited<ReturnType<typeof signUpPassenger>>['agent'],
+  dropoffZone: string,
+  seats = 1,
+  pickupZone = 'BANANI',
+) {
+  const res = await agent.post('/api/rides').send({ pickupZone, dropoffZone, seats });
+  return res;
 }
 
 // Returns a supertest agent that keeps the session cookie, like a browser would.

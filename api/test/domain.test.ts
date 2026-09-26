@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateFare, estimateFare, poolDiscountPaisa } from '../src/domain/fare';
 import { manhattanKm } from '../src/domain/geo';
+import { isCompatible, rankPools } from '../src/domain/matching';
 import { canRideTransition } from '../src/domain/ride-status';
 
 const BANANI = { xKm: 0, yKm: 0 };
@@ -55,6 +56,36 @@ describe('fare (DESIGN.md §5 worked example)', () => {
   it('refuses non-integer inputs instead of producing float money', () => {
     expect(() => calculateFare(2.5, 1, true)).toThrow();
     expect(() => calculateFare(2, 0, true)).toThrow();
+  });
+});
+
+describe('matching rule (DESIGN.md §4)', () => {
+  const GULSHAN_2 = { xKm: 1, yKm: 0 };
+  const poolWithNusrat = { pickupZone: 'BANANI', memberDropoffs: [MOHAKHALI] };
+
+  it('pools Rafiq with Nusrat: same pickup, destinations 1 km apart', () => {
+    expect(isCompatible({ pickupZone: 'BANANI', dropoff: GULSHAN_1 }, poolWithNusrat)).toBe(true);
+  });
+
+  it('does not pool Shirin to Gulshan 2: 3 km from Mohakhali', () => {
+    expect(isCompatible({ pickupZone: 'BANANI', dropoff: GULSHAN_2 }, poolWithNusrat)).toBe(false);
+  });
+
+  it('does not pool different pickup zones, however close the destinations', () => {
+    expect(isCompatible({ pickupZone: 'GULSHAN_2', dropoff: MOHAKHALI }, poolWithNusrat)).toBe(false);
+  });
+
+  it('requires closeness to EVERY member, not just one', () => {
+    // Gulshan 2 is 2 km from Gulshan 1 but 3 km from Mohakhali
+    const pool = { pickupZone: 'BANANI', memberDropoffs: [MOHAKHALI, GULSHAN_1] };
+    expect(isCompatible({ pickupZone: 'BANANI', dropoff: GULSHAN_2 }, pool)).toBe(false);
+  });
+
+  it('fills the fullest Tesla first, then the oldest', () => {
+    const older = { id: 'older', seatsTaken: 1, createdAt: new Date('2026-09-27T08:40:00') };
+    const fuller = { id: 'fuller', seatsTaken: 2, createdAt: new Date('2026-09-27T08:42:00') };
+    const newer = { id: 'newer', seatsTaken: 1, createdAt: new Date('2026-09-27T08:43:00') };
+    expect(rankPools([newer, older, fuller]).map((p) => p.id)).toEqual(['fuller', 'older', 'newer']);
   });
 });
 
