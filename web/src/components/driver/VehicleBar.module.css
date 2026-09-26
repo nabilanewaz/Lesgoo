@@ -1,0 +1,102 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 36px;
+  padding: 16px 20px;
+  background: var(--night);
+  border: 4px solid var(--turmeric);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 0 0 3px var(--night),
+    inset 0 0 0 5px var(--rani),
+    6px 6px 0 var(--outline);
+}
+
+.vehicle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.name {
+  font-size: 2.4rem;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 0;
+  color: #cfe6df;
+}
+
+.plate {
+  padding: 0 8px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--turmeric);
+  border: 2px solid var(--paper);
+  border-radius: 4px;
+}
+
+.switchWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* A big, obvious switch: drivers glance at it while the rickshaw moves. */
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 18px 6px 6px;
+  font: inherit;
+  color: var(--paper);
+  background: #3a3a3a;
+  border: 3px solid var(--paper);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.switch:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.knob {
+  width: 34px;
+  height: 34px;
+  background: #9a9a9a;
+  border: 3px solid var(--paper);
+  border-radius: 50%;
+  transition: background 0.2s ease;
+}
+
+.on {
+  background: var(--emerald-deep);
+}
+
+.on .knob {
+  background: var(--turmeric);
+}
+
+.switchLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.switchLabel span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
