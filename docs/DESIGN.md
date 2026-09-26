@@ -125,6 +125,11 @@ Once a pool has members, request statuses after `MATCHED` follow the pool's stat
 - A driver can't go offline while they have an active pool.
 - Every transition writes a row to `ride_events`, so we can later explain exactly what happened.
 
+### Access rules
+- Only passengers can request rides, and only drivers can use driver endpoints. A wrong role gets `403`.
+- Ride lookups always filter by the signed-in passenger's id. Asking for someone else's ride returns `404`, not `403`, so the API doesn't even confirm the ride exists.
+- A passenger sees their own fare and status, and only a **count** of co-riders, never their names or destinations. The driver sees every passenger in their own pool, because Jashim needs to know who is riding.
+
 ## 7. Database schema
 
 ```mermaid
