@@ -14,7 +14,19 @@ export function createApp() {
   // The API sits behind exactly one proxy (the Next.js server), so trust its
   // X-Forwarded-For header to get the real client IP for rate limiting.
   app.set('trust proxy', 1);
-  app.use(pinoHttp({ logger }));
+  app.use(
+    pinoHttp({
+      logger,
+      // One line per request. Full headers made the logs unreadable (and only the cookie was redacted).
+      serializers: {
+        req: (req) => ({ id: req.id, method: req.method, url: req.url }),
+        res: (res) => ({ statusCode: res.statusCode }),
+      },
+      customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+      customSuccessMessage: (req, res, ms) => `${req.method} ${req.url} ${res.statusCode} ${Math.round(ms)}ms`,
+      customErrorMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    }),
+  );
   app.use(express.json({ limit: '10kb' }));
   app.use(cookieParser());
 
