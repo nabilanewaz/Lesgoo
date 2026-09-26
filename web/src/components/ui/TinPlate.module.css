@@ -1,0 +1,75 @@
+.plate {
+  --frame: var(--rani);
+  position: relative;
+  padding: 26px 24px 24px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 7px solid var(--frame);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 0 0 4px var(--paper),
+    inset 0 0 0 6px var(--turmeric),
+    0 0 0 3px var(--outline),
+    7px 7px 0 3px var(--outline);
+}
+
+/* :where() keeps this at element-level specificity, so styled links inside a plate
+   (like the estimator's "Book" button) keep their own colours. */
+:where(.plate) a {
+  color: var(--rani-deep);
+}
+
+.plate :global(.bn) {
+  color: var(--ink-soft);
+}
+
+.withCrest {
+  margin-top: 30px;
+  padding-top: 34px;
+}
+
+.rani {
+  --frame: var(--rani);
+}
+.emerald {
+  --frame: var(--emerald);
+}
+.cobalt {
+  --frame: var(--cobalt);
+}
+.vermilion {
+  --frame: var(--vermilion);
+}
+
+/* The fan-lotus sits on the top edge of the frame, centred. */
+.crest {
+  position: absolute;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+  filter: drop-shadow(2px 2px 0 var(--outline));
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px dashed var(--frame);
+}
+
+.title {
+  font-size: 1.7rem;
+  color: var(--ink);
+}
+
+@media (max-width: 520px) {
+  .plate {
+    padding: 24px 16px 18px;
+  }
+  .withCrest {
+    padding-top: 32px;
+  }
+}

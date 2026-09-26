@@ -1,0 +1,9 @@
+.spin {
+  animation: roll 1.1s linear infinite;
+}
+
+@keyframes roll {
+  to {
+    transform: rotate(360deg);
+  }
+}
