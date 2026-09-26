@@ -8,25 +8,33 @@ import { clearSessionCookie, setSessionCookie } from './session';
 
 export const authRouter = Router();
 
-// Slows down password guessing: 20 attempts per IP per 15 minutes on sign-up/login.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  skip: () => env.NODE_ENV === 'test',
-  handler: (_req, res) => {
-    res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many attempts, try again in a few minutes' } });
-  },
-});
+// Per-IP limits, kept in this process's memory (resets on restart; with several API
+// instances you'd move the counters to a shared store such as Redis).
+const limiter = (limit: number, options: { onlyFailures?: boolean } = {}) =>
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit,
+    // Login: only failed attempts count. Brute force = many failures; a person signing
+    // in and out repeatedly should never lock themselves out.
+    skipSuccessfulRequests: options.onlyFailures ?? false,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skip: () => env.NODE_ENV === 'test',
+    handler: (_req, res) => {
+      res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many attempts, try again in a few minutes' } });
+    },
+  });
 
-authRouter.post('/signup', authLimiter, async (req, res) => {
+const loginLimiter = limiter(10, { onlyFailures: true }); // 10 wrong passwords / 15 min / IP
+const signupLimiter = limiter(20); // 20 new accounts / 15 min / IP
+
+authRouter.post('/signup', signupLimiter, async (req, res) => {
   const user = await signup(signupSchema.parse(req.body));
   setSessionCookie(res, user);
   res.status(201).json({ user });
 });
 
-authRouter.post('/login', authLimiter, async (req, res) => {
+authRouter.post('/login', loginLimiter, async (req, res) => {
   const user = await login(loginSchema.parse(req.body));
   setSessionCookie(res, user);
   res.json({ user });
