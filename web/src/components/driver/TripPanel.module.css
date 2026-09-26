@@ -1,0 +1,75 @@
+.pickup {
+  margin: 0 0 10px;
+}
+
+.passengers {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.passengers li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 2px dashed #d8cfbd;
+}
+
+.passengers li > div:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.drop {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.cancelled strong,
+.cancelled .drop {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.fare {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.total {
+  margin: 0 0 14px;
+  text-align: right;
+  color: var(--ink-soft);
+}
+
+.total strong {
+  font-size: 1.3rem;
+  color: var(--ink);
+}
+
+.hint {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.cancelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  font-weight: 700;
+}

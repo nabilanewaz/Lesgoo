@@ -1,0 +1,20 @@
+.page {
+  padding-top: 28px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.history {
+  margin-top: 36px; /* room for the card's fan-lotus crest */
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

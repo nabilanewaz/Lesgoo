@@ -1,0 +1,38 @@
+.subtitle {
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 2px dashed #d8cfbd;
+}
+
+.list li:last-child {
+  border-bottom: none;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.info span {
+  font-size: 0.9rem;
+}
+
+.when {
+  color: var(--ink-soft);
+}
