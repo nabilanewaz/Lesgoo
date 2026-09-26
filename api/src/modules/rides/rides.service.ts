@@ -4,7 +4,9 @@ import { manhattanKm } from '../../domain/geo';
 import { ACTIVE_RIDE_STATUSES, canRideTransition } from '../../domain/ride-status';
 import { conflict, notFound } from '../../lib/errors';
 import { recordEvent } from '../../lib/events';
+import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
+import { lockPool, releaseSeats, tryAutoMatch } from '../pools/pools.service';
 import { getTripZones } from '../zones/zones.service';
 import type { RequestRideInput } from './rides.schemas';
 import { passengerRideInclude, toPassengerRide } from './rides.view';
@@ -23,8 +25,9 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
   const distanceKm = manhattanKm(pickup, dropoff);
   const { subtotalPaisa } = calculateFare(distanceKm, input.seats, false);
 
+  let ride;
   try {
-    const ride = await prisma.$transaction(async (tx) => {
+    ride = await prisma.$transaction(async (tx) => {
       const created = await tx.rideRequest.create({
         data: {
           passengerId,
@@ -46,7 +49,6 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
       });
       return created;
     });
-    return toPassengerRide(ride);
   } catch (err) {
     // The partial unique index "one active ride per passenger" rejected it. Checking in code
     // first would race with a double-click; the index can't.
@@ -55,6 +57,16 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
     }
     throw err;
   }
+
+  // A Tesla may already be heading her way: try to join a compatible open pool now.
+  // The ride is already saved, so if matching fails unexpectedly we still return it as
+  // REQUESTED (a driver can accept it) instead of a 500 that would tempt a retry.
+  try {
+    if (await tryAutoMatch(ride)) return getMyRide(passengerId, ride.id);
+  } catch (err) {
+    logger.error({ err, rideId: ride.id }, 'auto-match failed; ride stays REQUESTED');
+  }
+  return toPassengerRide(ride);
 }
 
 export async function listMyRides(passengerId: string) {
@@ -106,6 +118,9 @@ export async function cancelRide(passengerId: string, rideId: string, reason?: s
   }
 
   await prisma.$transaction(async (tx) => {
+    // Lock order: pool first, then the ride (see pools.service.ts).
+    if (ride.poolId) await lockPool(tx, ride.poolId);
+
     // Conditional update: only succeeds if the status is still what we just read. If a driver
     // started the trip in between, count is 0 and we refuse instead of overwriting it.
     const { count } = await tx.rideRequest.updateMany({
@@ -117,11 +132,15 @@ export async function cancelRide(passengerId: string, rideId: string, reason?: s
     await recordEvent(tx, {
       type: 'RIDE_CANCELLED',
       rideRequestId: ride.id,
+      poolId: ride.poolId ?? undefined,
       actorId: passengerId,
       fromStatus: ride.status,
       toStatus: 'CANCELLED',
       data: reason ? { reason } : undefined,
     });
+
+    // Give the seats back so someone else (Shirin?) can take them.
+    await releaseSeats(tx, ride, passengerId);
   });
 
   return getMyRide(passengerId, rideId);
