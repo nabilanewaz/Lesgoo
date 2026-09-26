@@ -1,0 +1,76 @@
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 90px;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.prices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.price {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+}
+
+.pooled {
+  background: var(--turmeric);
+  box-shadow: var(--shadow-hard);
+}
+
+.label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Body font, not Galada: Galada's ৳ glyph looks like a "b", and money must be unambiguous. */
+.amount {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.save {
+  font-weight: 700;
+  color: var(--rani-deep);
+}
+
+.math {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.book {
+  display: block;
+  padding: 12px;
+  text-align: center;
+  text-decoration: none;
+  color: #fff;
+  background: var(--rani-deep);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--shadow-hard);
+}
+
+.book:hover {
+  background: var(--rani);
+}
