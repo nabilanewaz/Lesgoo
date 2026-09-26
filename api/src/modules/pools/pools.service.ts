@@ -1,9 +1,10 @@
-import { Prisma, type RideRequest } from '@prisma/client';
+import { Prisma, type Pool, type RideRequest } from '@prisma/client';
+import { poolDiscountPaisa } from '../../domain/fare';
 import { isCompatible, rankPools } from '../../domain/matching';
-import { ACTIVE_POOL_STATUSES } from '../../domain/pool-status';
-import { ACTIVE_RIDE_STATUSES } from '../../domain/ride-status';
+import { ACTIVE_POOL_STATUSES, canPoolTransition } from '../../domain/pool-status';
+import { ACTIVE_RIDE_STATUSES, canRideTransition } from '../../domain/ride-status';
 import { AppError, conflict, forbidden, notFound } from '../../lib/errors';
-import { recordEvent } from '../../lib/events';
+import { recordEvent, type RideEventType } from '../../lib/events';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 
@@ -11,8 +12,8 @@ import { prisma } from '../../lib/prisma';
 // The pool engine. Every way into a pool (auto-match, driver accept) goes through joinPool(),
 // so capacity and compatibility are enforced in exactly one place. See DESIGN.md §4 and §8.
 //
-// Lock order is always: pool row first, then the ride row. Taking locks in the same order
-// everywhere means two transactions can't each hold one lock and wait for the other (deadlock).
+// Lock order is always: vehicle row, then pool row, then ride rows. Taking locks in the same
+// order everywhere means two transactions can't each hold one lock and wait for the other (deadlock).
 // ---------------------------------------------------------------------------------------------
 
 type Tx = Prisma.TransactionClient;
@@ -138,6 +139,12 @@ export async function acceptRequest(driverId: string, rideId: string) {
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // Lock Bullet's row and re-check: "go offline" takes the same lock, so a driver can't
+      // go offline at the same instant they accept and end up offline with an open trip.
+      if (!(await lockVehicle(tx, vehicle.id)).isOnline) {
+        throw conflict('Go online before accepting rides', 'DRIVER_OFFLINE');
+      }
+
       let pool = await tx.pool.findFirst({
         where: { vehicleId: vehicle.id, status: { in: [...ACTIVE_POOL_STATUSES] } },
       });
@@ -198,4 +205,109 @@ export async function releaseSeats(tx: Tx, ride: RideRequest, actorId: string) {
     toStatus: 'CANCELLED',
     data: { reason: 'Last passenger cancelled' },
   });
+}
+
+export async function lockVehicle(tx: Tx, vehicleId: string) {
+  const rows = await tx.$queryRaw<{ is_online: boolean }[]>`
+    SELECT is_online FROM vehicles WHERE id = ${vehicleId}::uuid FOR UPDATE`;
+  return { isOnline: rows[0]?.is_online ?? false };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Driver-driven trip transitions: OPEN → DRIVER_ARRIVED → STARTED → COMPLETED, or → CANCELLED.
+// The pool and all its active passengers move together in one transaction (DESIGN.md §6).
+// ---------------------------------------------------------------------------------------------
+
+export type PoolTransition = 'DRIVER_ARRIVED' | 'STARTED' | 'COMPLETED' | 'CANCELLED';
+
+const poolEventType = {
+  DRIVER_ARRIVED: 'DRIVER_ARRIVED',
+  STARTED: 'TRIP_STARTED',
+  COMPLETED: 'TRIP_COMPLETED',
+  CANCELLED: 'POOL_CANCELLED',
+} as const satisfies Record<PoolTransition, RideEventType>;
+
+const timestampField = {
+  DRIVER_ARRIVED: 'arrivedAt',
+  STARTED: 'startedAt',
+  COMPLETED: 'completedAt',
+  CANCELLED: 'cancelledAt',
+} as const satisfies Record<PoolTransition, keyof Pool>;
+
+export async function transitionPool(driverId: string, to: PoolTransition): Promise<string> {
+  const vehicle = await prisma.vehicle.findUnique({ where: { driverId } });
+  if (!vehicle) throw forbidden('You need a registered Tesla to run trips');
+
+  const pool = await prisma.pool.findFirst({
+    where: { vehicleId: vehicle.id, status: { in: [...ACTIVE_POOL_STATUSES] } },
+  });
+  if (!pool) throw notFound('You have no active trip');
+  if (!canPoolTransition(pool.status, to)) {
+    throw conflict(`A trip that is ${pool.status} can't move to ${to}`, 'INVALID_TRANSITION');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await lockPool(tx, pool.id);
+
+    // Conditional on the status we read: a double-clicked "Start trip" runs this twice,
+    // and the second one finds the status already changed and gets a 409.
+    const now = new Date();
+    const { count } = await tx.pool.updateMany({
+      where: { id: pool.id, status: pool.status },
+      data: { status: to, [timestampField[to]]: now },
+    });
+    if (count === 0) throw conflict('This trip changed in the meantime. Refresh and try again.', 'STALE_STATE');
+
+    const members = await tx.rideRequest.findMany({ where: { poolId: pool.id, ...activeMembers } });
+
+    for (const ride of members) {
+      if (!canRideTransition(ride.status, to)) {
+        // Can't happen while ride statuses mirror the pool; fail loudly rather than corrupt data.
+        throw new Error(`Ride ${ride.id} is ${ride.status}, cannot follow its pool to ${to}`);
+      }
+
+      const data: Prisma.RideRequestUpdateInput = { status: to };
+      let eventData: Prisma.InputJsonValue | undefined;
+
+      if (to === 'STARTED') {
+        // Final fare (DESIGN.md §5): membership can't change any more, so we now know for
+        // certain whether this passenger shared the Tesla.
+        const shared = members.length >= 2;
+        const discount = poolDiscountPaisa(ride.subtotalPaisa, shared);
+        data.poolDiscountPaisa = discount;
+        data.farePaisa = ride.subtotalPaisa - discount;
+        eventData = { shared, subtotalPaisa: ride.subtotalPaisa, poolDiscountPaisa: discount, farePaisa: ride.subtotalPaisa - discount };
+      }
+      if (to === 'CANCELLED') {
+        data.cancelledAt = now;
+        data.cancelReason = 'Driver cancelled the trip';
+      }
+
+      await tx.rideRequest.update({ where: { id: ride.id }, data });
+      await recordEvent(tx, {
+        type: poolEventType[to],
+        rideRequestId: ride.id,
+        poolId: pool.id,
+        actorId: driverId,
+        fromStatus: ride.status,
+        toStatus: to,
+        data: eventData,
+      });
+    }
+
+    if (to === 'CANCELLED') {
+      await tx.pool.update({ where: { id: pool.id }, data: { seatsTaken: 0 } });
+    }
+
+    await recordEvent(tx, {
+      type: poolEventType[to],
+      poolId: pool.id,
+      actorId: driverId,
+      fromStatus: pool.status,
+      toStatus: to,
+      data: { passengers: members.length },
+    });
+  });
+
+  return pool.id;
 }
