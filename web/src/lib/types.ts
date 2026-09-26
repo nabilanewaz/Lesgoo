@@ -27,3 +27,76 @@ export type Estimate = { pickup: ZoneRef; dropoff: ZoneRef; solo: FareBreakdown;
 
 export type RideStatus = 'REQUESTED' | 'MATCHED' | 'DRIVER_ARRIVED' | 'STARTED' | 'COMPLETED' | 'CANCELLED';
 export type PoolStatus = 'OPEN' | 'DRIVER_ARRIVED' | 'STARTED' | 'COMPLETED' | 'CANCELLED';
+
+export type PassengerRide = {
+  id: string;
+  status: RideStatus;
+  pickup: ZoneRef;
+  dropoff: ZoneRef;
+  seats: number;
+  distanceKm: number;
+  paymentMethod: 'CASH' | 'TESLAPAY';
+  fare: {
+    subtotalPaisa: number;
+    pooledEstimatePaisa: number;
+    poolDiscountPaisa: number | null;
+    farePaisa: number | null;
+    isFinal: boolean;
+  };
+  pool: {
+    id: string;
+    status: PoolStatus;
+    vehicle: { name: string; plate: string };
+    driver: { name: string };
+    sharedWith: number;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+};
+
+export type RideEvent = { id: string; type: string; fromStatus: string | null; toStatus: string | null; createdAt: string };
+
+export type DriverPassenger = {
+  rideId: string;
+  name: string;
+  dropoff: ZoneRef;
+  seats: number;
+  status: RideStatus;
+  paymentMethod: 'CASH' | 'TESLAPAY';
+  subtotalPaisa: number;
+  farePaisa: number | null;
+};
+
+export type DriverPool = {
+  id: string;
+  status: PoolStatus;
+  pickup: ZoneRef;
+  capacity: number;
+  seatsTaken: number;
+  seatsLeft: number;
+  passengers: DriverPassenger[];
+  totalFarePaisa: number;
+  createdAt: string;
+  arrivedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+};
+
+export type DriverStatus = {
+  vehicle: { id: string; name: string; plate: string; capacity: number; isOnline: boolean };
+  activePool: DriverPool | null;
+};
+
+export type FeedRequest = {
+  rideId: string;
+  passengerName: string;
+  pickup: ZoneRef;
+  dropoff: ZoneRef;
+  seats: number;
+  distanceKm: number;
+  subtotalPaisa: number;
+  requestedAt: string;
+};

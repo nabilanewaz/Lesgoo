@@ -1,0 +1,46 @@
+import type { RideStatus } from './types';
+
+// Status wording shown to passengers, with a Bangla line for the painted-sign feel.
+export const RIDE_STATUS: Record<RideStatus, { label: string; bn: string }> = {
+  REQUESTED: { label: 'Finding your Tesla', bn: 'টেসলা খোঁজা হচ্ছে' },
+  MATCHED: { label: 'Driver on the way', bn: 'চালক আসছেন' },
+  DRIVER_ARRIVED: { label: 'Your Tesla is here', bn: 'চালক পৌঁছেছেন' },
+  STARTED: { label: 'On the way', bn: 'যাত্রা চলছে' },
+  COMPLETED: { label: 'Trip complete', bn: 'যাত্রা শেষ' },
+  CANCELLED: { label: 'Cancelled', bn: 'বাতিল' },
+};
+
+// Human wording for ride_events rows (the audit trail).
+export const EVENT_LABEL: Record<string, string> = {
+  RIDE_REQUESTED: 'You requested the ride',
+  RIDE_MATCHED: 'Matched with a Tesla',
+  DRIVER_ARRIVED: 'Driver arrived at pickup',
+  TRIP_STARTED: 'Trip started, fare finalised',
+  TRIP_COMPLETED: 'Trip completed',
+  RIDE_CANCELLED: 'You cancelled the ride',
+  POOL_CANCELLED: 'The driver cancelled the trip',
+};
+
+export const PAYMENT_LABEL = { CASH: 'Cash', TESLAPAY: 'TeslaPay' } as const;
+
+export const ACTIVE_STATUSES: RideStatus[] = ['REQUESTED', 'MATCHED', 'DRIVER_ARRIVED', 'STARTED'];
+export const CANCELLABLE_STATUSES: RideStatus[] = ['REQUESTED', 'MATCHED', 'DRIVER_ARRIVED'];
+
+// A passenger's status as the DRIVER sees it ("Driver on the way" makes no sense to the driver).
+export const RIDE_STATUS_FOR_DRIVER: Record<RideStatus, string> = {
+  REQUESTED: 'Waiting',
+  MATCHED: 'To pick up',
+  DRIVER_ARRIVED: 'At pickup',
+  STARTED: 'Riding',
+  COMPLETED: 'Dropped off',
+  CANCELLED: 'Cancelled',
+};
+
+// The driver's view of their trip.
+export const POOL_STATUS = {
+  OPEN: { label: 'Pick up your riders', bn: 'যাত্রী তুলুন' },
+  DRIVER_ARRIVED: { label: 'Waiting at pickup', bn: 'অপেক্ষা করছেন' },
+  STARTED: { label: 'On the road', bn: 'পথে আছেন' },
+  COMPLETED: { label: 'Trip complete', bn: 'যাত্রা শেষ' },
+  CANCELLED: { label: 'Trip cancelled', bn: 'বাতিল' },
+} as const;
