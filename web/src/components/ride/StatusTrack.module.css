@@ -1,0 +1,68 @@
+.track {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.track li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+/* the painted line joining the beads */
+.track li:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  right: 50%;
+  width: 100%;
+  height: 4px;
+  background: #d8cfbd;
+}
+
+.track li.done:not(:first-child)::before,
+.track li.current:not(:first-child)::before {
+  background: var(--emerald);
+}
+
+.bead {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+}
+
+.done .bead {
+  background: var(--emerald);
+}
+
+.current .bead {
+  background: var(--turmeric);
+  box-shadow: 0 0 0 4px rgba(255, 194, 26, 0.45);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.current .label {
+  color: var(--ink);
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 9px rgba(255, 194, 26, 0.1);
+  }
+}

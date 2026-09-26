@@ -1,0 +1,56 @@
+.box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px;
+  text-align: center;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+}
+
+.final {
+  background: var(--turmeric);
+  box-shadow: var(--shadow-hard);
+}
+
+.caption {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.final .caption {
+  color: var(--ink);
+}
+
+/* Body font on purpose: Galada's ৳ looks like a "b". */
+.big {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.estimate {
+  margin: 0;
+}
+
+.breakdown {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 16px;
+  margin: 6px 0;
+  font-size: 0.92rem;
+  text-align: left;
+}
+
+.breakdown dt {
+  margin: 0;
+}
+
+.breakdown dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}

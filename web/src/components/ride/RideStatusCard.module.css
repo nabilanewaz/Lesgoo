@@ -1,0 +1,74 @@
+.headline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.headline p {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.route {
+  margin: 0 0 14px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.route strong {
+  color: var(--ink);
+}
+
+.tesla {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+}
+
+.tesla div {
+  display: flex;
+  flex-direction: column;
+}
+
+.plate {
+  align-self: flex-start;
+  padding: 0 8px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--turmeric);
+  border: 1.5px solid var(--ink);
+  border-radius: 4px;
+}
+
+.spaced {
+  margin-top: 14px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.actions:empty {
+  display: none;
+}
+
+.confirmText {
+  font-weight: 700;
+}

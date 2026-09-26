@@ -1,0 +1,42 @@
+.payment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: none;
+}
+
+.payment legend {
+  width: 100%;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.payment label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.payment .chosen {
+  background: var(--turmeric);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.payment input {
+  accent-color: var(--rani-deep);
+}
+
+.note {
+  margin: 12px 0 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
