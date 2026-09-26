@@ -123,6 +123,8 @@ Once a pool has members, request statuses after `MATCHED` follow the pool's stat
 - Any transition not shown above is rejected with `409 Conflict`. That includes starting a trip that hasn't had an arrival, and cancelling after `STARTED`.
 - Passengers can cancel up until `STARTED`. Cancelling gives the seats back. If nobody active is left in the pool, the pool becomes `CANCELLED` and the Tesla is free.
 - A driver can't go offline while they have an active pool.
+- A driver's feed of "relevant requests" is empty while they're offline or a trip is underway. With no trip, it shows every waiting request that fits in the Tesla, oldest first. With an `OPEN` trip, it shows only requests that pass the matching rule and fit in the seats left.
+- When the driver cancels, every active passenger becomes `CANCELLED` with the reason "Driver cancelled the trip". They can book again straight away.
 - Every transition writes a row to `ride_events`, so we can later explain exactly what happened.
 
 ### Access rules
@@ -248,7 +250,9 @@ The seat claim, the request update and the event insert all happen in **one tran
 The conditional UPDATE is enough to protect **capacity**. It isn't enough to protect the **matching rule**. Suppose Bullet's pool has one member going to X, and two new requests arrive at once. Their destinations are each 2 km from X, but 4 km from each other. Each request is checked only against the members that were there when it started, so both pass their check, even though the two new riders aren't compatible with each other. So `joinPool` first locks the pool row (`SELECT ... FOR UPDATE`). It then reads the members, checks compatibility, and claims seats. Joins to the same pool happen one at a time, and each one sees the previous join's result.
 
 ### Lock order
-Any code that changes a pooled ride locks the **pool row first, then the ride row**: joining, cancelling, and later the driver's transitions. If one transaction held the ride and waited for the pool while another held the pool and waited for the ride, Postgres would have to kill one of them with a deadlock error. Always locking in the same order makes that impossible.
+Locks are always taken in the same order: **vehicle row, then pool row, then ride rows**. That applies to joining, cancelling and the driver's transitions. If one transaction held the ride and waited for the pool while another held the pool and waited for the ride, Postgres would have to kill one of them with a deadlock error. Always locking in the same order makes that impossible.
+
+The vehicle lock is only needed for going online/offline and for accepting. Both lock Bullet's row, so Jashim can't press "Go offline" at the same instant he accepts a ride and end up offline with an open trip.
 
 ### How we know it works
 [pooling.test.ts](../api/test/pooling.test.ts) fires Nusrat's and Shirin's requests at the same moment for Bullet's last seat. It also sends 8 passengers at once for 2 seats. As a check, we swapped the atomic claim for a naive "read `seats_taken`, then write `seats_taken + 1`" and removed the CHECK constraint. **Both tests then failed.** Both women got the seat, and all 8 commuters got into a 3-seat Tesla. With the real code, both tests pass.
