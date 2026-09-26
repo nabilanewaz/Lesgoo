@@ -1,0 +1,156 @@
+// Dhaka Tesla Pool schema. See docs/DESIGN.md §7 for why each table looks like this.
+// Prisma can't express CHECK constraints or partial unique indexes, so those are
+// hand-written at the bottom of the migration SQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+}
+
+enum PoolStatus {
+  OPEN
+  DRIVER_ARRIVED
+  STARTED
+  COMPLETED
+  CANCELLED
+}
+
+enum RideStatus {
+  REQUESTED
+  MATCHED
+  DRIVER_ARRIVED
+  STARTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TESLAPAY
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  vehicle      Vehicle?
+  rideRequests RideRequest[]
+  events       RideEvent[]
+
+  @@map("users")
+}
+
+model Vehicle {
+  id       String  @id @default(uuid()) @db.Uuid
+  driverId String  @unique @map("driver_id") @db.Uuid
+  name     String
+  plate    String  @unique
+  capacity Int     @db.SmallInt
+  isOnline Boolean @default(false) @map("is_online")
+
+  driver User   @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  pools  Pool[]
+
+  @@map("vehicles")
+}
+
+// Reference data: fixed Dhaka areas on a km grid (Banani = origin). Inserted by the migration.
+model Zone {
+  code String @id
+  name String @unique
+  xKm  Int    @map("x_km")
+  yKm  Int    @map("y_km")
+
+  pickups  RideRequest[] @relation("PickupZone")
+  dropoffs RideRequest[] @relation("DropoffZone")
+  pools    Pool[]
+
+  @@map("zones")
+}
+
+model Pool {
+  id          String     @id @default(uuid()) @db.Uuid
+  vehicleId   String     @map("vehicle_id") @db.Uuid
+  pickupZone  String     @map("pickup_zone")
+  status      PoolStatus @default(OPEN)
+  capacity    Int        @db.SmallInt // snapshot of vehicle capacity when the pool was created
+  seatsTaken  Int        @default(0) @map("seats_taken") @db.SmallInt
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  arrivedAt   DateTime?  @map("arrived_at") @db.Timestamptz
+  startedAt   DateTime?  @map("started_at") @db.Timestamptz
+  completedAt DateTime?  @map("completed_at") @db.Timestamptz
+  cancelledAt DateTime?  @map("cancelled_at") @db.Timestamptz
+
+  vehicle Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  zone    Zone          @relation(fields: [pickupZone], references: [code])
+  members RideRequest[]
+  events  RideEvent[]
+
+  @@index([status, pickupZone])
+  @@index([vehicleId, createdAt(sort: Desc)])
+  @@map("pools")
+}
+
+model RideRequest {
+  id                String        @id @default(uuid()) @db.Uuid
+  passengerId       String        @map("passenger_id") @db.Uuid
+  poolId            String?       @map("pool_id") @db.Uuid
+  pickupZone        String        @map("pickup_zone")
+  dropoffZone       String        @map("dropoff_zone")
+  seats             Int           @db.SmallInt
+  status            RideStatus    @default(REQUESTED)
+  distanceKm        Int           @map("distance_km")
+  subtotalPaisa     Int           @map("subtotal_paisa")
+  poolDiscountPaisa Int?          @map("pool_discount_paisa") // set when the trip starts
+  farePaisa         Int?          @map("fare_paisa") // set when the trip starts
+  paymentMethod     PaymentMethod @default(CASH) @map("payment_method")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  cancelledAt       DateTime?     @map("cancelled_at") @db.Timestamptz
+  cancelReason      String?       @map("cancel_reason")
+
+  passenger User        @relation(fields: [passengerId], references: [id], onDelete: Restrict)
+  pool      Pool?       @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  pickup    Zone        @relation("PickupZone", fields: [pickupZone], references: [code])
+  dropoff   Zone        @relation("DropoffZone", fields: [dropoffZone], references: [code])
+  events    RideEvent[]
+
+  @@index([status, pickupZone])
+  @@index([passengerId, createdAt(sort: Desc)])
+  @@index([poolId])
+  @@map("ride_requests")
+}
+
+// Append-only audit trail: every state change writes one row. Never updated or deleted.
+model RideEvent {
+  id            BigInt   @id @default(autoincrement())
+  rideRequestId String?  @map("ride_request_id") @db.Uuid
+  poolId        String?  @map("pool_id") @db.Uuid
+  actorId       String?  @map("actor_id") @db.Uuid
+  type          String
+  fromStatus    String?  @map("from_status")
+  toStatus      String?  @map("to_status")
+  data          Json?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  rideRequest RideRequest? @relation(fields: [rideRequestId], references: [id], onDelete: Restrict)
+  pool        Pool?        @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  actor       User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([rideRequestId])
+  @@index([poolId])
+  @@map("ride_events")
+}
