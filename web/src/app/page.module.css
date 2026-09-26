@@ -27,16 +27,8 @@
   margin: 0 auto;
 }
 
-.kicker {
-  margin: 8px 0 4px;
-  color: var(--sky);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-size: 0.85rem;
-}
-
 .title {
+  margin-top: 8px;
   font-size: clamp(2.6rem, 6vw, 4.2rem);
 }
 
@@ -81,6 +73,16 @@
   background: var(--turmeric);
   border: 3px solid var(--outline);
   border-radius: 50%;
+}
+
+/* Grid rows are already equal height, but each card sits inside an <li>. Make the <li> a
+   flex container so the card stretches to fill it, whatever the length of its text. */
+.steps li {
+  display: flex;
+}
+
+.steps li > * {
+  flex: 1;
 }
 
 .stepTitle {

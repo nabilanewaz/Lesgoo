@@ -6,17 +6,19 @@ export function HeroArt({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 400 330" role="img" aria-label="Two painted peacocks among lotus flowers">
       {/* fronds */}
-      <g transform="translate(40 300) rotate(-35)">
-        <FrondShape length={110} />
+      {/* fronds: positioned so every leaflet stays inside the 400×330 canvas (drawn first,
+          so they sit behind the peacocks) */}
+      <g transform="translate(62 322) rotate(-22)">
+        <FrondShape length={100} />
       </g>
-      <g transform="translate(360 300) rotate(35)">
-        <FrondShape length={110} />
+      <g transform="translate(338 322) rotate(22)">
+        <FrondShape length={100} />
       </g>
-      <g transform="translate(70 120) rotate(-70)">
-        <FrondShape length={70} color="#2c8a48" />
+      <g transform="translate(84 128) rotate(-62)">
+        <FrondShape length={62} color="#2c8a48" />
       </g>
-      <g transform="translate(330 120) rotate(70)">
-        <FrondShape length={70} color="#2c8a48" />
+      <g transform="translate(316 128) rotate(62)">
+        <FrondShape length={62} color="#2c8a48" />
       </g>
 
       {/* central stem with white fronds */}

@@ -1,5 +1,5 @@
 import { HeroArt } from '@/components/art/HeroArt';
-import { FareEstimator } from '@/components/FareEstimator';
+import { FareStory } from '@/components/FareStory';
 import { TinPlate } from '@/components/ui/TinPlate';
 import { bnNumber } from '@/lib/format';
 import styles from './page.module.css';
@@ -29,14 +29,13 @@ export default function Home() {
         <div className={`container ${styles.heroGrid}`}>
           <div className={`flower-frame ${styles.panel}`}>
             <HeroArt className={styles.art} />
-            <p className={styles.kicker}>Banani Road 11 · 8:41 AM</p>
             <h1 className={`painted ${styles.title}`}>Dhaka Tesla Pool</h1>
             <p className={styles.bnTitle} lang="bn">
               ঢাকা টেসলা পুল
             </p>
             <p className={styles.tagline}>Share a seat. Split the fare. Survive Dhaka traffic.</p>
           </div>
-          <FareEstimator />
+          <FareStory />
         </div>
       </section>
 
