@@ -12,6 +12,12 @@
   flex-wrap: wrap;
 }
 
+/* More specific than the global .container (padding: 0 16px) that .bar also carries,
+   so the vertical padding survives regardless of stylesheet order. */
+.header .bar {
+  padding-block: 10px;
+}
+
 .brand {
   display: flex;
   align-items: center;
