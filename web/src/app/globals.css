@@ -177,8 +177,9 @@ main {
   font-size: 0.9rem;
 }
 
+/* margin 0 auto (not 0): the <p> is also a .container, and the auto margins are what centre it. */
 .site-footer p {
-  margin: 0;
+  margin: 0 auto;
   padding: 16px;
   text-align: center;
 }
