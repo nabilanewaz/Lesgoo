@@ -20,6 +20,7 @@
 
 .passengers li {
   display: flex;
+  flex-wrap: wrap; /* drop-off buttons go on their own full-width line */
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -36,6 +37,12 @@
 .drop {
   font-size: 0.88rem;
   color: var(--ink-soft);
+}
+
+.early {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--emerald-deep);
 }
 
 .cancelled strong,
@@ -82,4 +89,11 @@
   gap: 10px;
   margin-top: 14px;
   font-weight: 700;
+}
+
+/* Kept apart from the everyday buttons so it is found when needed and not hit by accident. */
+.trouble {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 2px dashed #d8cfbd;
 }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { CANCELLABLE_STATUSES, PAYMENT_LABEL, RIDE_STATUS, describeCoRiders } from '@/lib/labels';
+import { brokeDown, CANCELLABLE_STATUSES, gotOffEarly, PAYMENT_LABEL, RIDE_STATUS, describeCoRiders } from '@/lib/labels';
 import type { Gender, PassengerRide } from '@/lib/types';
 import { Wheel } from '../art/Wheel';
 import { Button } from '../ui/Button';
@@ -18,7 +18,8 @@ import styles from './RideStatusCard.module.css';
 type Props = {
   ride: PassengerRide;
   onChanged: () => void; // refetch after an action
-  onBookAnother?: () => void; // shown once the ride is over
+  // Shown once the ride is over. After a breakdown it carries the trip to rebook.
+  onBookAnother?: (rebook?: { pickup: string; dropoff: string; seats: number; note: string }) => void;
 };
 
 const OTHER_GENDER = { WOMAN: 'men', MAN: 'women', UNDISCLOSED: '' } as const;
@@ -39,6 +40,7 @@ function headline(ride: PassengerRide, gender: Gender): string {
     case 'STARTED':
       return `Riding to ${ride.dropoff.name}. Hold on tight.`;
     case 'COMPLETED':
+      if (ride.droppedOff && gotOffEarly(ride)) return `You got off at ${ride.droppedOff.name}, on the way to ${ride.dropoff.name}.`;
       return `You made it to ${ride.dropoff.name}.`;
     case 'CANCELLED':
       return ride.cancelReason ?? 'This ride was cancelled.';
@@ -71,6 +73,9 @@ export function RideStatusCard({ ride, onChanged, onBookAnother }: Props) {
   const status = RIDE_STATUS[ride.status];
   const canCancel = CANCELLABLE_STATUSES.includes(ride.status);
   const finished = ride.status === 'COMPLETED' || ride.status === 'CANCELLED';
+  const broken = ride.status === 'CANCELLED' && brokeDown(ride);
+  // A breakdown after pick-up leaves the rider somewhere on the way: they choose where they are.
+  const brokeMidTrip = broken && ride.fare.farePaisa !== null;
 
   // Same-gender rider still waiting: let her choose to share with anyone instead.
   async function shareWithAnyone() {
@@ -114,7 +119,15 @@ export function RideStatusCard({ ride, onChanged, onBookAnother }: Props) {
       </div>
 
       <p className={styles.route}>
-        <strong>{ride.pickup.name}</strong> → <strong>{ride.dropoff.name}</strong> · {ride.distanceKm} km · {ride.seats}{' '}
+        <strong>{ride.pickup.name}</strong> →{' '}
+        {ride.droppedOff && gotOffEarly(ride) ? (
+          <>
+            <s>{ride.dropoff.name}</s> <strong>{ride.droppedOff.name}</strong>
+          </>
+        ) : (
+          <strong>{ride.dropoff.name}</strong>
+        )}{' '}
+        · {ride.distanceKm} km · {ride.seats}{' '}
         seat{ride.seats > 1 ? 's' : ''} · {PAYMENT_LABEL[ride.paymentMethod]}
         <br />
         <PreferenceTags shareRide={ride.shareRide} sameGenderOnly={ride.sameGenderOnly} gender={user?.gender ?? 'UNDISCLOSED'} />
@@ -161,6 +174,22 @@ export function RideStatusCard({ ride, onChanged, onBookAnother }: Props) {
         </div>
       )}
 
+      {ride.status === 'STARTED' && (
+        <p className={styles.prefNote}>
+          Need to get off before {ride.dropoff.name}? Tell {ride.pool?.driver.name ?? 'your driver'}. You only pay for the part you
+          ride.
+        </p>
+      )}
+
+      {broken && (
+        <div className={styles.spaced}>
+          <Alert tone="info">
+            Sorry! {brokeMidTrip ? 'You won’t be charged for this ride.' : 'Nothing was charged.'} Book another Tesla and we’ll
+            get you to {ride.dropoff.name}.
+          </Alert>
+        </div>
+      )}
+
       {canCancel && ride.pool && ride.pool.sharedWith > 0 && (
         <p className={styles.prefNote}>Not comfortable with who you&apos;re sharing with? You can cancel for free until the trip starts.</p>
       )}
@@ -190,7 +219,23 @@ export function RideStatusCard({ ride, onChanged, onBookAnother }: Props) {
               Cancel ride
             </Button>
           ))}
-        {finished && onBookAnother && <Button onClick={onBookAnother}>Book another ride</Button>}
+        {finished && onBookAnother && !broken && <Button onClick={() => onBookAnother()}>Book another ride</Button>}
+        {broken && onBookAnother && (
+          <Button
+            onClick={() =>
+              onBookAnother({
+                pickup: ride.pickup.code,
+                dropoff: ride.dropoff.code,
+                seats: ride.seats,
+                note: brokeMidTrip
+                  ? `Your destination is filled in. Choose where you are now.`
+                  : `Same trip, filled in for you. We’ll find another Tesla.`,
+              })
+            }
+          >
+            Book another Tesla
+          </Button>
+        )}
       </div>
 
       <RideTimeline ride={ride} />

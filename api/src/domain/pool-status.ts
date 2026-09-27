@@ -4,7 +4,8 @@ import type { PoolStatus } from '@prisma/client';
 export const POOL_TRANSITIONS: Record<PoolStatus, readonly PoolStatus[]> = {
   OPEN: ['DRIVER_ARRIVED', 'CANCELLED'],
   DRIVER_ARRIVED: ['STARTED', 'CANCELLED'],
-  STARTED: ['COMPLETED'],
+  // STARTED -> CANCELLED only via "Tesla broke down" (reportBreakdown), never a plain cancel.
+  STARTED: ['COMPLETED', 'CANCELLED'],
   COMPLETED: [],
   CANCELLED: [],
 };

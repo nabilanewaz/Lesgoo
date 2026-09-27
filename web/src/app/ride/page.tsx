@@ -5,6 +5,7 @@ import { Suspense, useState } from 'react';
 import { RequireRole } from '@/components/RequireRole';
 import { BookRideForm } from '@/components/ride/BookRideForm';
 import { RideStatusCard } from '@/components/ride/RideStatusCard';
+import type { Trip } from '@/components/trip/TripFields';
 import { Alert, Loading } from '@/components/ui/Feedback';
 import { useCurrentRide, useRide } from '@/lib/hooks';
 import styles from './ride.module.css';
@@ -18,6 +19,8 @@ function RideScreen() {
   // The last ride we saw as active. When /rides/current turns empty (completed or cancelled),
   // we keep showing that ride's outcome instead of jumping straight back to the form.
   const [summaryId, setSummaryId] = useState<string | null>(null);
+  // A trip to book again, pre-filled (after a breakdown), with a line explaining why.
+  const [rebook, setRebook] = useState<(Trip & { note: string }) | null>(null);
   const current = useCurrentRide((ride) => setSummaryId(ride.id));
   const summary = useRide(!current.data?.ride ? summaryId : null);
 
@@ -32,11 +35,18 @@ function RideScreen() {
     if (summary.error) return <Alert>{summary.error.message}</Alert>;
     if (!summary.data) return <Loading label="Loading your trip…" />;
     return (
-      <RideStatusCard ride={summary.data.ride} onChanged={() => summary.mutate()} onBookAnother={() => setSummaryId(null)} />
+      <RideStatusCard
+        ride={summary.data.ride}
+        onChanged={() => summary.mutate()}
+        onBookAnother={(trip) => {
+          setRebook(trip ?? null);
+          setSummaryId(null);
+        }}
+      />
     );
   }
 
-  const initialTrip = {
+  const initialTrip = rebook ?? {
     pickup: params.get('pickup') ?? 'BANANI',
     dropoff: params.get('dropoff') ?? 'MOHAKHALI',
     seats: Math.min(3, Math.max(1, Number(params.get('seats')) || 1)),
@@ -44,7 +54,9 @@ function RideScreen() {
   return (
     <BookRideForm
       initialTrip={initialTrip}
+      note={rebook?.note}
       onBooked={(ride) => {
+        setRebook(null);
         setSummaryId(ride.id);
         current.mutate({ ride });
       }}

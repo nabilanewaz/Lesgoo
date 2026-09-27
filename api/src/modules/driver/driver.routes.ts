@@ -2,7 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { notFound } from '../../lib/errors';
 import { currentUser, requireAuth, requireRole } from '../../middleware/auth';
-import { acceptRequest, transitionPool, type PoolTransition } from '../pools/pools.service';
+import {
+  acceptRequest,
+  BREAKDOWN_REASONS,
+  dropOffPassenger,
+  reportBreakdown,
+  transitionPool,
+  type PoolTransition,
+} from '../pools/pools.service';
 import { getDriverStatus, getPoolHistory, getRequestFeed, setAutoAccept, setOnline } from './driver.service';
 
 export const driverRouter = Router();
@@ -54,6 +61,23 @@ for (const [action, to] of Object.entries(transitions)) {
     res.json(await getDriverStatus(driverId));
   });
 }
+
+// Let ONE passenger off: at their destination (no body), or early at an area on the way.
+driverRouter.post('/rides/:id/drop-off', async (req, res) => {
+  const id = z.uuid().safeParse(req.params.id);
+  if (!id.success) throw notFound('Ride not found');
+  const { zone } = z.object({ zone: z.string().min(1).optional() }).parse(req.body ?? {});
+  const driverId = currentUser(req).id;
+  await dropOffPassenger(driverId, id.data, zone);
+  res.json(await getDriverStatus(driverId));
+});
+
+driverRouter.post('/pool/breakdown', async (req, res) => {
+  const { reason } = z.object({ reason: z.enum(BREAKDOWN_REASONS) }).parse(req.body);
+  const driverId = currentUser(req).id;
+  await reportBreakdown(driverId, reason);
+  res.json(await getDriverStatus(driverId));
+});
 
 driverRouter.get('/pools', async (req, res) => {
   res.json({ pools: await getPoolHistory(currentUser(req).id) });

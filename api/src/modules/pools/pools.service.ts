@@ -1,5 +1,6 @@
 import { Prisma, type Pool, type RideRequest } from '@prisma/client';
-import { poolDiscountPaisa } from '../../domain/fare';
+import { earlyDropOffFare, poolDiscountPaisa } from '../../domain/fare';
+import { manhattanKm, zonesOnTheWay } from '../../domain/geo';
 import {
   genderPreferencesMet,
   isCompatible,
@@ -288,6 +289,11 @@ export async function transitionPool(driverId: string, to: PoolTransition): Prom
   if (!canPoolTransition(pool.status, to)) {
     throw conflict(`A trip that is ${pool.status} can't move to ${to}`, 'INVALID_TRANSITION');
   }
+  // Passengers are in the car: the driver can't just cancel. If the Tesla can't go on, that's
+  // "Tesla broke down" (reportBreakdown), which frees the passengers of any charge.
+  if (to === 'CANCELLED' && pool.status === 'STARTED') {
+    throw conflict('The trip has started. Drop your passengers off, or report a breakdown.', 'INVALID_TRANSITION');
+  }
 
   await prisma.$transaction(async (tx) => {
     await lockPool(tx, pool.id);
@@ -309,7 +315,7 @@ export async function transitionPool(driverId: string, to: PoolTransition): Prom
         throw new Error(`Ride ${ride.id} is ${ride.status}, cannot follow its pool to ${to}`);
       }
 
-      const data: Prisma.RideRequestUpdateInput = { status: to };
+      const data: Prisma.RideRequestUncheckedUpdateInput = { status: to };
       let eventData: Prisma.InputJsonValue | undefined;
 
       if (to === 'STARTED') {
@@ -320,6 +326,11 @@ export async function transitionPool(driverId: string, to: PoolTransition): Prom
         data.poolDiscountPaisa = discount;
         data.farePaisa = ride.subtotalPaisa - discount;
         eventData = { shared, subtotalPaisa: ride.subtotalPaisa, poolDiscountPaisa: discount, farePaisa: ride.subtotalPaisa - discount };
+      }
+      if (to === 'COMPLETED') {
+        // "End trip" drops everyone still on board at their own destination.
+        data.droppedOffZone = ride.dropoffZone;
+        data.completedAt = now;
       }
       if (to === 'CANCELLED') {
         data.cancelledAt = now;
@@ -353,4 +364,159 @@ export async function transitionPool(driverId: string, to: PoolTransition): Prom
   });
 
   return pool.id;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mid-trip events (DESIGN.md §6). Kept to two driver actions, each one tap plus at most one
+// question, because the driver has to do this at the roadside:
+//   - drop off ONE passenger, at their destination or at an area on the way (got off early)
+//   - "Tesla broke down": the trip ends, nobody still on board pays, the Tesla goes offline
+// ---------------------------------------------------------------------------------------------
+
+async function findDriversPool(driverId: string) {
+  const vehicle = await prisma.vehicle.findUnique({ where: { driverId } });
+  if (!vehicle) throw forbidden('You need a registered Tesla to run trips');
+  const pool = await prisma.pool.findFirst({
+    where: { vehicleId: vehicle.id, status: { in: [...ACTIVE_POOL_STATUSES] } },
+  });
+  if (!pool) throw notFound('You have no active trip');
+  return { vehicle, pool };
+}
+
+// The driver lets one passenger off. `zoneCode` omitted (or their destination) = normal drop-off
+// at the fixed fare. An area on the way = they got off early and pay for the part they rode.
+// When the last passenger is off, the trip completes by itself.
+export async function dropOffPassenger(driverId: string, rideId: string, zoneCode?: string) {
+  const { pool } = await findDriversPool(driverId);
+
+  const ride = await prisma.rideRequest.findFirst({ where: { id: rideId, poolId: pool.id } });
+  if (!ride) throw notFound('This passenger is not in your trip');
+  if (ride.status !== 'STARTED') {
+    throw conflict('You can only drop off a passenger who is riding with you', 'INVALID_TRANSITION');
+  }
+
+  const at = zoneCode ?? ride.dropoffZone;
+  const early = at !== ride.dropoffZone;
+  let fare: ReturnType<typeof earlyDropOffFare> | undefined;
+  if (early) {
+    const zones = await prisma.zone.findMany();
+    const pickup = zones.find((z) => z.code === ride.pickupZone)!;
+    const dropoff = zones.find((z) => z.code === ride.dropoffZone)!;
+    const stop = zonesOnTheWay(pickup, dropoff, zones).find((z) => z.code === at);
+    if (!stop) throw new AppError(400, 'NOT_ON_THE_WAY', 'That area is not on the way to this passenger’s destination');
+    // Same pool discount as at the start: getting off doesn't change whether they shared.
+    const shared = (ride.poolDiscountPaisa ?? 0) > 0;
+    fare = earlyDropOffFare(manhattanKm(pickup, stop), ride.seats, shared, ride.farePaisa ?? ride.subtotalPaisa);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Pool first, then ride (the lock order): a breakdown reported at the same moment waits.
+    await lockPool(tx, pool.id);
+
+    const now = new Date();
+    // Conditional on STARTED: a double tap, or a breakdown that got in first, drops nobody twice.
+    const { count } = await tx.rideRequest.updateMany({
+      where: { id: ride.id, poolId: pool.id, status: 'STARTED' },
+      data: {
+        status: 'COMPLETED',
+        droppedOffZone: at,
+        completedAt: now,
+        ...(fare && {
+          distanceKm: fare.distanceKm,
+          subtotalPaisa: fare.subtotalPaisa,
+          poolDiscountPaisa: fare.poolDiscountPaisa,
+          farePaisa: fare.farePaisa,
+        }),
+      },
+    });
+    if (count === 0) throw conflict('This passenger has already been dropped off', 'STALE_STATE');
+
+    await recordEvent(tx, {
+      type: 'PASSENGER_DROPPED_OFF',
+      rideRequestId: ride.id,
+      poolId: pool.id,
+      actorId: driverId,
+      fromStatus: 'STARTED',
+      toStatus: 'COMPLETED',
+      data: fare
+        ? { at, early: true, bookedTo: ride.dropoffZone, bookedFarePaisa: ride.farePaisa, farePaisa: fare.farePaisa, distanceKm: fare.distanceKm }
+        : { at, early: false, farePaisa: ride.farePaisa },
+    });
+
+    const stillOnBoard = await tx.rideRequest.count({ where: { poolId: pool.id, ...activeMembers } });
+    if (stillOnBoard > 0) return;
+
+    await tx.pool.update({ where: { id: pool.id }, data: { status: 'COMPLETED', completedAt: now } });
+    await recordEvent(tx, {
+      type: 'TRIP_COMPLETED',
+      poolId: pool.id,
+      actorId: driverId,
+      fromStatus: 'STARTED',
+      toStatus: 'COMPLETED',
+      data: { reason: 'Last passenger dropped off' },
+    });
+  });
+}
+
+export const BREAKDOWN_REASONS = ['FLAT_TYRE', 'BATTERY', 'OTHER'] as const;
+export type BreakdownReason = (typeof BREAKDOWN_REASONS)[number];
+
+const breakdownText: Record<BreakdownReason, string> = {
+  FLAT_TYRE: 'The Tesla broke down (flat tyre)',
+  BATTERY: 'The Tesla broke down (battery)',
+  OTHER: 'The Tesla broke down',
+};
+
+// The Tesla can't go on. Works at any point of the trip. Everyone still booked or on board is
+// released with no charge (the service failed them, not the other way round) and can book another
+// Tesla straight away. Passengers already dropped off keep their fare. The Tesla goes offline so
+// no new riders are sent to it; the driver goes online again once it's fixed.
+export async function reportBreakdown(driverId: string, reason: BreakdownReason) {
+  const { vehicle, pool } = await findDriversPool(driverId);
+
+  await prisma.$transaction(async (tx) => {
+    // Lock order: vehicle, then pool, then rides.
+    await lockVehicle(tx, vehicle.id);
+    await lockPool(tx, pool.id);
+
+    const now = new Date();
+    const { count } = await tx.pool.updateMany({
+      where: { id: pool.id, status: pool.status },
+      data: { status: 'CANCELLED', cancelledAt: now, seatsTaken: 0 },
+    });
+    if (count === 0) throw conflict('This trip changed in the meantime. Refresh and try again.', 'STALE_STATE');
+
+    const released = await tx.rideRequest.findMany({ where: { poolId: pool.id, ...activeMembers } });
+    for (const ride of released) {
+      await tx.rideRequest.update({
+        where: { id: ride.id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancelReason: breakdownText[reason],
+          // 0, not null, once the trip had started: the fare was fixed, then waived.
+          ...(ride.status === 'STARTED' && { farePaisa: 0 }),
+        },
+      });
+      await recordEvent(tx, {
+        type: 'TESLA_BROKE_DOWN',
+        rideRequestId: ride.id,
+        poolId: pool.id,
+        actorId: driverId,
+        fromStatus: ride.status,
+        toStatus: 'CANCELLED',
+        data: { reason, waivedFarePaisa: ride.farePaisa },
+      });
+    }
+
+    await tx.vehicle.update({ where: { id: vehicle.id }, data: { isOnline: false } });
+    await recordEvent(tx, {
+      type: 'TESLA_BROKE_DOWN',
+      poolId: pool.id,
+      actorId: driverId,
+      fromStatus: pool.status,
+      toStatus: 'CANCELLED',
+      data: { reason, passengersReleased: released.length, wentOffline: true },
+    });
+  });
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { calculateFare, estimateFare, poolDiscountPaisa } from '../src/domain/fare';
-import { manhattanKm } from '../src/domain/geo';
+import { calculateFare, earlyDropOffFare, estimateFare, poolDiscountPaisa } from '../src/domain/fare';
+import { manhattanKm, zonesOnTheWay } from '../src/domain/geo';
 import { isCompatible, rankPools } from '../src/domain/matching';
-import { canRideTransition } from '../src/domain/ride-status';
+import { canRideTransition, passengerCanCancel } from '../src/domain/ride-status';
 
 const BANANI = { xKm: 0, yKm: 0 };
 const MOHAKHALI = { xKm: 0, yKm: -2 };
@@ -150,11 +150,55 @@ describe('ride state machine', () => {
     expect(canRideTransition('DRIVER_ARRIVED', 'CANCELLED')).toBe(true);
   });
 
-  it('rejects skipping steps, cancelling mid-trip and reviving finished rides', () => {
+  it('lets a started ride be cancelled only by a breakdown, never by the passenger', () => {
+    expect(canRideTransition('STARTED', 'CANCELLED')).toBe(true);
+    expect(passengerCanCancel('STARTED')).toBe(false);
+    expect(passengerCanCancel('DRIVER_ARRIVED')).toBe(true);
+    expect(passengerCanCancel('COMPLETED')).toBe(false);
+  });
+
+  it('rejects skipping steps and reviving finished rides', () => {
     expect(canRideTransition('REQUESTED', 'STARTED')).toBe(false);
     expect(canRideTransition('MATCHED', 'COMPLETED')).toBe(false);
-    expect(canRideTransition('STARTED', 'CANCELLED')).toBe(false);
     expect(canRideTransition('COMPLETED', 'REQUESTED')).toBe(false);
     expect(canRideTransition('CANCELLED', 'MATCHED')).toBe(false);
+  });
+});
+
+describe('getting off early (DESIGN.md §5)', () => {
+  const zone = (code: string, xKm: number, yKm: number) => ({ code, xKm, yKm });
+  const ZONES = [
+    zone('BANANI', 0, 0),
+    zone('GULSHAN_2', 1, 0),
+    zone('GULSHAN_1', 1, -2),
+    zone('MOHAKHALI', 0, -2),
+    zone('BASHUNDHARA', 2, 2),
+    zone('UTTARA', -1, 9),
+  ] as const;
+  const [banani, gulshan2, gulshan1, mohakhali, , uttara] = ZONES;
+
+  it("lists the areas on Rafiq's way to Gulshan 1, nearest first, without either end", () => {
+    expect(zonesOnTheWay(banani, gulshan1, ZONES).map((z) => z.code)).toEqual(['GULSHAN_2', 'MOHAKHALI']);
+  });
+
+  it('lists nothing when there is no area in between', () => {
+    expect(zonesOnTheWay(banani, mohakhali, ZONES)).toEqual([]);
+    expect(zonesOnTheWay(banani, gulshan2, ZONES)).toEqual([]);
+  });
+
+  it('never offers a detour', () => {
+    expect(zonesOnTheWay(uttara, gulshan2, ZONES).map((z) => z.code)).toEqual(['BANANI']);
+  });
+
+  it('charges a solo rider for the km ridden: Gulshan 2 after 1 km is ৳50', () => {
+    expect(earlyDropOffFare(1, 1, false, 9000)).toMatchObject({ subtotalPaisa: 5000, poolDiscountPaisa: 0, farePaisa: 5000 });
+  });
+
+  it('keeps the pool discount for a shared rider: Mohakhali after 2 km is ৳52.50', () => {
+    expect(earlyDropOffFare(2, 1, true, 6750)).toMatchObject({ subtotalPaisa: 7000, poolDiscountPaisa: 1750, farePaisa: 5250 });
+  });
+
+  it('never charges more than the fare fixed at the start', () => {
+    expect(earlyDropOffFare(3, 1, false, 6750)).toMatchObject({ subtotalPaisa: 9000, poolDiscountPaisa: 2250, farePaisa: 6750 });
   });
 });

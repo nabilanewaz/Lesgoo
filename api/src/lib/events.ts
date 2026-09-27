@@ -11,6 +11,8 @@ export type RideEventType =
   | 'DRIVER_ARRIVED'
   | 'TRIP_STARTED'
   | 'TRIP_COMPLETED'
+  | 'PASSENGER_DROPPED_OFF'
+  | 'TESLA_BROKE_DOWN'
   | 'POOL_CANCELLED';
 
 export type RideEventInput = {

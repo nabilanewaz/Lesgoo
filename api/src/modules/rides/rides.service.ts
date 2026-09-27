@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { calculateFare, estimateFare } from '../../domain/fare';
 import { manhattanKm } from '../../domain/geo';
-import { ACTIVE_RIDE_STATUSES, canRideTransition } from '../../domain/ride-status';
+import { ACTIVE_RIDE_STATUSES, passengerCanCancel } from '../../domain/ride-status';
 import { badRequest, conflict, notFound } from '../../lib/errors';
 import { recordEvent } from '../../lib/events';
 import { logger } from '../../lib/logger';
@@ -132,7 +132,7 @@ export async function getMyRideEvents(passengerId: string, rideId: string) {
 export async function cancelRide(passengerId: string, rideId: string, reason?: string) {
   const ride = await findOwnRide(passengerId, rideId);
 
-  if (!canRideTransition(ride.status, 'CANCELLED')) {
+  if (!passengerCanCancel(ride.status)) {
     throw conflict(`A ride that is ${ride.status} can no longer be cancelled`, 'INVALID_TRANSITION');
   }
 
