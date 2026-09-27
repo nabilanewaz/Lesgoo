@@ -10,10 +10,10 @@ describe('passenger sign-up', () => {
   it('creates Nusrat as a passenger and signs her in with an httpOnly cookie', async () => {
     const res = await request(app)
       .post('/api/auth/signup')
-      .send({ name: 'Nusrat', email: 'Nusrat@TeslaPool.test', password: PASSWORD })
+      .send({ name: 'Nusrat', email: 'Nusrat@TeslaPool.test', password: PASSWORD, gender: 'WOMAN' })
       .expect(201);
 
-    expect(res.body.user).toMatchObject({ name: 'Nusrat', email: 'nusrat@teslapool.test', role: 'PASSENGER' });
+    expect(res.body.user).toMatchObject({ name: 'Nusrat', email: 'nusrat@teslapool.test', role: 'PASSENGER', gender: 'WOMAN' });
     expect(res.body.user).not.toHaveProperty('passwordHash');
 
     const cookie = res.headers['set-cookie']?.[0] ?? '';
@@ -27,7 +27,7 @@ describe('passenger sign-up', () => {
   it('ignores a role in the body: Rafiq cannot sign himself up as a driver', async () => {
     const res = await request(app)
       .post('/api/auth/signup')
-      .send({ name: 'Rafiq', email: 'rafiq@teslapool.test', password: PASSWORD, role: 'DRIVER' })
+      .send({ name: 'Rafiq', email: 'rafiq@teslapool.test', password: PASSWORD, gender: 'MAN', role: 'DRIVER' })
       .expect(201);
 
     expect(res.body.user.role).toBe('PASSENGER');
@@ -37,7 +37,7 @@ describe('passenger sign-up', () => {
     await signUpPassenger('Shirin');
     const res = await request(app)
       .post('/api/auth/signup')
-      .send({ name: 'Shirin Again', email: 'SHIRIN@teslapool.test', password: PASSWORD })
+      .send({ name: 'Shirin Again', email: 'SHIRIN@teslapool.test', password: PASSWORD, gender: 'WOMAN' })
       .expect(409);
 
     expect(res.body.error.code).toBe('EMAIL_TAKEN');
@@ -46,12 +46,30 @@ describe('passenger sign-up', () => {
   it('explains which fields are invalid', async () => {
     const res = await request(app)
       .post('/api/auth/signup')
-      .send({ name: 'N', email: 'not-an-email', password: 'short' })
+      .send({ name: 'N', email: 'not-an-email', password: 'short', gender: 'ALIEN' })
       .expect(400);
 
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     const paths = res.body.error.details.map((d: { path: string }) => d.path);
-    expect(paths).toEqual(expect.arrayContaining(['name', 'email', 'password']));
+    expect(paths).toEqual(expect.arrayContaining(['name', 'email', 'password', 'gender']));
+  });
+});
+
+describe('declared gender', () => {
+  it('allows "prefer not to say"', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ name: 'Shirin', email: 'shirin@teslapool.test', password: PASSWORD, gender: 'UNDISCLOSED' })
+      .expect(201);
+    expect(res.body.user.gender).toBe('UNDISCLOSED');
+  });
+
+  it('requires an explicit choice', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ name: 'Shirin', email: 'shirin@teslapool.test', password: PASSWORD })
+      .expect(400);
+    expect(res.body.error.details.map((d: { path: string }) => d.path)).toContain('gender');
   });
 });
 
@@ -74,7 +92,7 @@ describe('login', () => {
       .expect(401);
     const unknownEmail = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'nobody@teslapool.test', password: PASSWORD })
+      .send({ email: 'nobody@teslapool.test', password: PASSWORD, gender: 'WOMAN' })
       .expect(401);
 
     expect(wrongPassword.body).toEqual(unknownEmail.body);
@@ -98,7 +116,7 @@ describe('sessions', () => {
   it('accepts a Bearer token for API clients', async () => {
     const signup = await request(app)
       .post('/api/auth/signup')
-      .send({ name: 'Rafiq', email: 'rafiq@teslapool.test', password: PASSWORD });
+      .send({ name: 'Rafiq', email: 'rafiq@teslapool.test', password: PASSWORD, gender: 'MAN' });
     const token = /tp_session=([^;]+)/.exec(signup.headers['set-cookie']?.[0] ?? '')?.[1];
 
     await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`).expect(200);

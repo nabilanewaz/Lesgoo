@@ -46,12 +46,20 @@ export async function requestRide(
   return res;
 }
 
+// The story cast's self-declared genders; anyone else (e.g. the "Commuter" crowd) didn't say.
+export const CAST_GENDER: Record<string, 'WOMAN' | 'MAN' | 'UNDISCLOSED'> = {
+  Nusrat: 'WOMAN',
+  Shirin: 'WOMAN',
+  Moushumi: 'WOMAN',
+  Rafiq: 'MAN',
+};
+
 // Returns a supertest agent that keeps the session cookie, like a browser would.
-export async function signUpPassenger(name: string) {
+export async function signUpPassenger(name: string, gender = CAST_GENDER[name] ?? 'UNDISCLOSED') {
   const agent = request.agent(app);
   const res = await agent
     .post('/api/auth/signup')
-    .send({ name, email: `${name.toLowerCase()}@teslapool.test`, password: PASSWORD })
+    .send({ name, email: `${name.toLowerCase()}@teslapool.test`, password: PASSWORD, gender })
     .expect(201);
   return { agent, user: res.body.user as { id: string; name: string; email: string; role: string } };
 }
