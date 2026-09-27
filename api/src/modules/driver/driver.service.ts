@@ -22,6 +22,8 @@ async function findActivePool(vehicleId: string) {
 export async function getDriverStatus(driverId: string) {
   const vehicle = await getVehicle(driverId);
   const pool = await findActivePool(vehicle.id);
+  // Needed to offer "got off early" stops; ten reference rows.
+  const zones = pool?.status === 'STARTED' ? await prisma.zone.findMany() : [];
   return {
     vehicle: {
       id: vehicle.id,
@@ -31,7 +33,7 @@ export async function getDriverStatus(driverId: string) {
       isOnline: vehicle.isOnline,
       autoAccept: vehicle.autoAccept,
     },
-    activePool: pool ? toDriverPool(pool) : null,
+    activePool: pool ? toDriverPool(pool, zones) : null,
   };
 }
 
@@ -98,7 +100,7 @@ export async function getPoolHistory(driverId: string) {
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
-  return pools.map(toDriverPool);
+  return pools.map((p) => toDriverPool(p));
 }
 
 // The driver decides how he works: compatible riders join automatically, or wait for him.

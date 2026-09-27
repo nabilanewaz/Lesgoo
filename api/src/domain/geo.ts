@@ -6,3 +6,14 @@ export type GridPoint = { xKm: number; yKm: number };
 export function manhattanKm(a: GridPoint, b: GridPoint): number {
   return Math.abs(a.xKm - b.xKm) + Math.abs(a.yKm - b.yKm);
 }
+
+// Areas a passenger could get off at on the way: zones that add no detour between pickup and
+// destination (on a grid, anything inside the rectangle the trip spans). Nearest to the pickup
+// first, which is the order the driver passes them. Excludes both ends of the trip.
+export function zonesOnTheWay<Z extends GridPoint & { code: string }>(pickup: Z, dropoff: Z, zones: readonly Z[]): Z[] {
+  const direct = manhattanKm(pickup, dropoff);
+  return zones
+    .filter((z) => z.code !== pickup.code && z.code !== dropoff.code)
+    .filter((z) => manhattanKm(pickup, z) + manhattanKm(z, dropoff) === direct)
+    .sort((a, b) => manhattanKm(pickup, a) - manhattanKm(pickup, b));
+}

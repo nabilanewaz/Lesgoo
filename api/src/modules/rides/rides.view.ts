@@ -4,6 +4,7 @@ import { poolDiscountPaisa } from '../../domain/fare';
 export const passengerRideInclude = {
   pickup: true,
   dropoff: true,
+  droppedOff: true,
   pool: {
     select: {
       id: true,
@@ -28,6 +29,8 @@ export function toPassengerRide(ride: PassengerRide) {
     status: ride.status,
     pickup: { code: ride.pickup.code, name: ride.pickup.name },
     dropoff: { code: ride.dropoff.code, name: ride.dropoff.name },
+    // Where they actually got off (differs from dropoff if they got off early).
+    droppedOff: ride.droppedOff && { code: ride.droppedOff.code, name: ride.droppedOff.name },
     seats: ride.seats,
     distanceKm: ride.distanceKm,
     paymentMethod: ride.paymentMethod,
@@ -55,6 +58,7 @@ export function toPassengerRide(ride: PassengerRide) {
     },
     createdAt: ride.createdAt,
     updatedAt: ride.updatedAt,
+    completedAt: ride.completedAt,
     cancelledAt: ride.cancelledAt,
     cancelReason: ride.cancelReason,
   };

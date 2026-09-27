@@ -68,3 +68,17 @@ export function estimateFare(distanceKm: number, seats: number, rules: FareRules
     pooled: calculateFare(distanceKm, seats, true, rules),
   };
 }
+
+// A passenger who gets off early pays for the part they rode (like Uber), keeping the pool
+// discount they had at the start, and never more than the fare fixed when the trip started.
+export function earlyDropOffFare(
+  riddenKm: number,
+  seats: number,
+  shared: boolean,
+  fareAtStartPaisa: number,
+  rules: FareRules = FARE_RULES,
+): FareBreakdown {
+  const ridden = calculateFare(riddenKm, seats, shared, rules);
+  if (ridden.farePaisa <= fareAtStartPaisa) return ridden;
+  return { ...ridden, farePaisa: fareAtStartPaisa, poolDiscountPaisa: ridden.subtotalPaisa - fareAtStartPaisa };
+}

@@ -1,9 +1,10 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, Zone } from '@prisma/client';
+import { zonesOnTheWay } from '../../domain/geo';
 
 export const driverPoolInclude = {
   zone: true,
   members: {
-    include: { passenger: { select: { name: true } }, dropoff: true },
+    include: { passenger: { select: { name: true } }, dropoff: true, droppedOff: true },
     orderBy: { createdAt: 'asc' },
   },
 } satisfies Prisma.PoolInclude;
@@ -12,7 +13,8 @@ type DriverPool = Prisma.PoolGetPayload<{ include: typeof driverPoolInclude }>;
 
 // What Jashim sees about his own trip: who is riding, where each one gets off, and what
 // each pays. Passengers who cancelled stay in the list (with their status) for the record.
-export function toDriverPool(pool: DriverPool) {
+// `zones` (all of them) is only needed during the trip, to offer the "got off early" stops.
+export function toDriverPool(pool: DriverPool, zones: Zone[] = []) {
   const passengers = pool.members.map((m) => ({
     rideId: m.id,
     name: m.passenger.name,
@@ -25,6 +27,11 @@ export function toDriverPool(pool: DriverPool) {
     gender: m.passengerGender,
     subtotalPaisa: m.subtotalPaisa,
     farePaisa: m.farePaisa,
+    droppedOff: m.droppedOff && { code: m.droppedOff.code, name: m.droppedOff.name },
+    cancelReason: m.cancelReason,
+    // Where this passenger could get off early, nearest first. Empty unless they are on board.
+    stopsOnTheWay:
+      m.status === 'STARTED' ? zonesOnTheWay(pool.zone, m.dropoff, zones).map((z) => ({ code: z.code, name: z.name })) : [],
   }));
 
   return {

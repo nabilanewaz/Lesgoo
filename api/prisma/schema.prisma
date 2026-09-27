@@ -62,12 +62,12 @@ model User {
 }
 
 model Vehicle {
-  id       String  @id @default(uuid()) @db.Uuid
-  driverId String  @unique @map("driver_id") @db.Uuid
-  name     String
-  plate    String  @unique
-  capacity Int     @db.SmallInt
-  isOnline Boolean @default(false) @map("is_online")
+  id         String  @id @default(uuid()) @db.Uuid
+  driverId   String  @unique @map("driver_id") @db.Uuid
+  name       String
+  plate      String  @unique
+  capacity   Int     @db.SmallInt
+  isOnline   Boolean @default(false) @map("is_online")
   // "Auto-add riders heading my way": on = compatible riders join this Tesla's trip automatically;
   // off = they wait in the driver's feed until he accepts them (DESIGN.md §4).
   autoAccept Boolean @default(true) @map("auto_accept")
@@ -85,9 +85,10 @@ model Zone {
   xKm  Int    @map("x_km")
   yKm  Int    @map("y_km")
 
-  pickups  RideRequest[] @relation("PickupZone")
-  dropoffs RideRequest[] @relation("DropoffZone")
-  pools    Pool[]
+  pickups     RideRequest[] @relation("PickupZone")
+  dropoffs    RideRequest[] @relation("DropoffZone")
+  droppedOffs RideRequest[] @relation("DroppedOffZone")
+  pools       Pool[]
 
   @@map("zones")
 }
@@ -139,12 +140,17 @@ model RideRequest {
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
   cancelledAt       DateTime?     @map("cancelled_at") @db.Timestamptz
   cancelReason      String?       @map("cancel_reason")
+  // Where the driver actually let this passenger off: the booked destination, or an area on the
+  // way if they got off early (the fare is then for the part they rode, DESIGN.md §5).
+  droppedOffZone    String?       @map("dropped_off_zone")
+  completedAt       DateTime?     @map("completed_at") @db.Timestamptz
 
-  passenger User        @relation(fields: [passengerId], references: [id], onDelete: Restrict)
-  pool      Pool?       @relation(fields: [poolId], references: [id], onDelete: Restrict)
-  pickup    Zone        @relation("PickupZone", fields: [pickupZone], references: [code])
-  dropoff   Zone        @relation("DropoffZone", fields: [dropoffZone], references: [code])
-  events    RideEvent[]
+  passenger  User        @relation(fields: [passengerId], references: [id], onDelete: Restrict)
+  pool       Pool?       @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  pickup     Zone        @relation("PickupZone", fields: [pickupZone], references: [code])
+  dropoff    Zone        @relation("DropoffZone", fields: [dropoffZone], references: [code])
+  droppedOff Zone?       @relation("DroppedOffZone", fields: [droppedOffZone], references: [code], onDelete: Restrict)
+  events     RideEvent[]
 
   @@index([status, pickupZone])
   @@index([passengerId, createdAt(sort: Desc)])
