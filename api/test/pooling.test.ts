@@ -149,6 +149,23 @@ describe('the last-seat race (DESIGN.md §8)', () => {
     expect(openPools).toHaveLength(1);
     expect(openPools[0]!.seatsTaken).toBe(1);
   });
+
+  it('tells a driver with an out-of-date list that the rider is already taken', async () => {
+    const jashim = await createJashimOnline();
+    const karim = await createDriver('Karim', { name: 'Toofan', plate: 'DHAKA-TESLA-02', capacity: 3 }, { online: true });
+    const nusrat = await signUpPassenger('Nusrat');
+    const n = await requestRide(nusrat.agent, 'MOHAKHALI');
+
+    await acceptRequest(jashim.id, n.body.ride.id); // Jashim taps first...
+    // ...Karim's screen hasn't refreshed yet, so he taps too.
+    await expect(acceptRequest(karim.id, n.body.ride.id)).rejects.toMatchObject({ code: 'RIDE_NOT_AVAILABLE' });
+
+    // Nusrat is with Jashim only, and Karim was left with no trip at all.
+    const ride = await prisma.rideRequest.findUniqueOrThrow({ where: { id: n.body.ride.id }, include: { pool: true } });
+    expect(ride.pool?.vehicleId).toBe(jashim.vehicle.id);
+    expect(await prisma.pool.count({ where: { vehicleId: karim.vehicle.id } })).toBe(0);
+    expect(await prisma.rideEvent.count({ where: { rideRequestId: n.body.ride.id, type: 'RIDE_MATCHED' } })).toBe(1);
+  });
 });
 
 describe('matching rules', () => {
