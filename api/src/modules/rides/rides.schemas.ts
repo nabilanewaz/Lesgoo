@@ -12,8 +12,16 @@ export const requestRideSchema = z
     dropoffZone: zoneCode,
     seats: seats.default(1),
     paymentMethod: z.enum(['CASH', 'TESLAPAY']).default('CASH'),
+    shareRide: z.boolean().default(true),
+    sameGenderOnly: z.boolean().default(false),
   })
-  .refine(differentZones, differentZonesError);
+  .refine(differentZones, differentZonesError)
+  // Mirrors part of the DB check ride_requests_same_gender_check, with a friendlier message.
+  // (The "declared a gender" half needs the user record, so the service checks it.)
+  .refine((v) => v.shareRide || !v.sameGenderOnly, {
+    message: 'Same-gender rides only apply when you share your ride',
+    path: ['sameGenderOnly'],
+  });
 
 export const estimateQuerySchema = z
   .object({ pickupZone: zoneCode, dropoffZone: zoneCode, seats: seats.default(1) })

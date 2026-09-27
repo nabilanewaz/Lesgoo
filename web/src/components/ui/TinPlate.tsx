@@ -9,7 +9,7 @@ import styles from './TinPlate.module.css';
 type Frame = 'rani' | 'emerald' | 'cobalt' | 'vermilion';
 
 // Crest colour per frame, chosen to contrast with the frame and to vary across neighbouring cards.
-const crestPalette = { rani: PALETTES.gold, emerald: PALETTES.pink, cobalt: PALETTES.pink, vermilion: PALETTES.blue };
+const crestPalette = { rani: PALETTES.gold, emerald: PALETTES.gold, cobalt: PALETTES.pink, vermilion: PALETTES.blue };
 
 type Props = {
   title?: string;

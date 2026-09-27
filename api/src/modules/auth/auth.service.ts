@@ -10,15 +10,15 @@ const BCRYPT_ROUNDS = 10;
 // "wrong password". Otherwise response time would reveal which emails have accounts.
 const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', BCRYPT_ROUNDS);
 
-export type PublicUser = Pick<User, 'id' | 'name' | 'email' | 'role'>;
+export type PublicUser = Pick<User, 'id' | 'name' | 'email' | 'role' | 'gender'>;
 
-const toPublicUser = (u: User): PublicUser => ({ id: u.id, name: u.name, email: u.email, role: u.role });
+const toPublicUser = (u: User): PublicUser => ({ id: u.id, name: u.name, email: u.email, role: u.role, gender: u.gender });
 
 export async function signup(input: SignupInput): Promise<PublicUser> {
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
   try {
     const user = await prisma.user.create({
-      data: { name: input.name, email: input.email, passwordHash, role: 'PASSENGER' },
+      data: { name: input.name, email: input.email, passwordHash, role: 'PASSENGER', gender: input.gender },
     });
     return toPublicUser(user);
   } catch (err) {

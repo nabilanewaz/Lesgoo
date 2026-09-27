@@ -197,3 +197,52 @@ describe('driver cancels', () => {
     await jashim.post('/api/driver/offline').expect(200);
   });
 });
+
+describe("the driver's auto-add switch", () => {
+  it('is on by default: Rafiq joins Bullet automatically', async () => {
+    const { jashim } = await nusratAndRafiqInBullet(); // asserts Rafiq was MATCHED
+    const me = await jashim.get('/api/driver/me').expect(200);
+    expect(me.body.vehicle.autoAccept).toBe(true);
+  });
+
+  it('when off, compatible riders wait in the feed until Jashim accepts them', async () => {
+    const jashim = await jashimOnline();
+    const off = await jashim.post('/api/driver/auto-accept').send({ enabled: false }).expect(200);
+    expect(off.body.vehicle.autoAccept).toBe(false);
+
+    const nusrat = await signUpPassenger('Nusrat');
+    const rafiq = await signUpPassenger('Rafiq');
+    const n = await requestRide(nusrat.agent, 'MOHAKHALI');
+    await jashim.post(`/api/driver/requests/${n.body.ride.id}/accept`).expect(200);
+
+    // Rafiq is heading the same way, but Jashim picks his own riders now.
+    const r = await requestRide(rafiq.agent, 'GULSHAN_1');
+    expect(r.body.ride.status).toBe('REQUESTED');
+    const feed = await jashim.get('/api/driver/requests').expect(200);
+    expect(feed.body.requests.map((x: { passengerName: string }) => x.passengerName)).toEqual(['Rafiq']);
+
+    await jashim.post(`/api/driver/requests/${r.body.ride.id}/accept`).expect(200);
+    const me = await jashim.get('/api/driver/me').expect(200);
+    expect(me.body.activePool.passengers).toHaveLength(2);
+  });
+
+  it('can be switched back on at any time', async () => {
+    const jashim = await jashimOnline();
+    await jashim.post('/api/driver/auto-accept').send({ enabled: false }).expect(200);
+    await jashim.post('/api/driver/auto-accept').send({ enabled: true }).expect(200);
+
+    const nusrat = await signUpPassenger('Nusrat');
+    const rafiq = await signUpPassenger('Rafiq');
+    const n = await requestRide(nusrat.agent, 'MOHAKHALI');
+    await jashim.post(`/api/driver/requests/${n.body.ride.id}/accept`).expect(200);
+    const r = await requestRide(rafiq.agent, 'GULSHAN_1');
+    expect(r.body.ride.status).toBe('MATCHED');
+  });
+
+  it('rejects a malformed switch value and is drivers-only', async () => {
+    const jashim = await jashimOnline();
+    await jashim.post('/api/driver/auto-accept').send({ enabled: 'yes' }).expect(400);
+    const nusrat = await signUpPassenger('Nusrat');
+    await nusrat.agent.post('/api/driver/auto-accept').send({ enabled: false }).expect(403);
+  });
+});

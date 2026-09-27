@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { notFound } from '../../lib/errors';
 import { currentUser, requireAuth, requireRole } from '../../middleware/auth';
 import { acceptRequest, transitionPool, type PoolTransition } from '../pools/pools.service';
-import { getDriverStatus, getPoolHistory, getRequestFeed, setOnline } from './driver.service';
+import { getDriverStatus, getPoolHistory, getRequestFeed, setAutoAccept, setOnline } from './driver.service';
 
 export const driverRouter = Router();
 
@@ -19,6 +19,11 @@ driverRouter.post('/online', async (req, res) => {
 
 driverRouter.post('/offline', async (req, res) => {
   res.json(await setOnline(currentUser(req).id, false));
+});
+
+driverRouter.post('/auto-accept', async (req, res) => {
+  const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+  res.json(await setAutoAccept(currentUser(req).id, enabled));
 });
 
 driverRouter.get('/requests', async (req, res) => {

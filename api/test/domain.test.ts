@@ -61,24 +61,27 @@ describe('fare (DESIGN.md §5 worked example)', () => {
 
 describe('matching rule (DESIGN.md §4)', () => {
   const GULSHAN_2 = { xKm: 1, yKm: 0 };
-  const poolWithNusrat = { pickupZone: 'BANANI', memberDropoffs: [MOHAKHALI] };
+  const plain = { shareRide: true, sameGenderOnly: false, gender: 'UNDISCLOSED' as const };
+  const sharer = (dropoff: { xKm: number; yKm: number }, pickupZone = 'BANANI') => ({ pickupZone, dropoff, ...plain });
+  const member = (dropoff: { xKm: number; yKm: number }) => ({ dropoff, ...plain });
+  const poolWithNusrat = { pickupZone: 'BANANI', members: [member(MOHAKHALI)] };
 
   it('pools Rafiq with Nusrat: same pickup, destinations 1 km apart', () => {
-    expect(isCompatible({ pickupZone: 'BANANI', dropoff: GULSHAN_1 }, poolWithNusrat)).toBe(true);
+    expect(isCompatible(sharer(GULSHAN_1), poolWithNusrat)).toBe(true);
   });
 
   it('does not pool Shirin to Gulshan 2: 3 km from Mohakhali', () => {
-    expect(isCompatible({ pickupZone: 'BANANI', dropoff: GULSHAN_2 }, poolWithNusrat)).toBe(false);
+    expect(isCompatible(sharer(GULSHAN_2), poolWithNusrat)).toBe(false);
   });
 
   it('does not pool different pickup zones, however close the destinations', () => {
-    expect(isCompatible({ pickupZone: 'GULSHAN_2', dropoff: MOHAKHALI }, poolWithNusrat)).toBe(false);
+    expect(isCompatible(sharer(MOHAKHALI, 'GULSHAN_2'), poolWithNusrat)).toBe(false);
   });
 
   it('requires closeness to EVERY member, not just one', () => {
     // Gulshan 2 is 2 km from Gulshan 1 but 3 km from Mohakhali
-    const pool = { pickupZone: 'BANANI', memberDropoffs: [MOHAKHALI, GULSHAN_1] };
-    expect(isCompatible({ pickupZone: 'BANANI', dropoff: GULSHAN_2 }, pool)).toBe(false);
+    const pool = { pickupZone: 'BANANI', members: [member(MOHAKHALI), member(GULSHAN_1)] };
+    expect(isCompatible(sharer(GULSHAN_2), pool)).toBe(false);
   });
 
   it('fills the fullest Tesla first, then the oldest', () => {
@@ -86,6 +89,55 @@ describe('matching rule (DESIGN.md §4)', () => {
     const fuller = { id: 'fuller', seatsTaken: 2, createdAt: new Date('2026-09-27T08:42:00') };
     const newer = { id: 'newer', seatsTaken: 1, createdAt: new Date('2026-09-27T08:43:00') };
     expect(rankPools([newer, older, fuller]).map((p) => p.id)).toEqual(['fuller', 'older', 'newer']);
+  });
+});
+
+describe('sharing preferences', () => {
+  type G = 'WOMAN' | 'MAN' | 'UNDISCLOSED';
+  const rider = (gender: G, extra: { shareRide?: boolean; sameGenderOnly?: boolean } = {}) => ({
+    pickupZone: 'BANANI',
+    dropoff: GULSHAN_1,
+    gender,
+    shareRide: extra.shareRide ?? true,
+    sameGenderOnly: extra.sameGenderOnly ?? false,
+  });
+  const pool = (...members: ReturnType<typeof rider>[]) => ({
+    pickupZone: 'BANANI',
+    members: members.map((m) => ({ gender: m.gender, shareRide: m.shareRide, sameGenderOnly: m.sameGenderOnly, dropoff: MOHAKHALI })),
+  });
+  const womenOnly = rider('WOMAN', { sameGenderOnly: true });
+  const menOnly = rider('MAN', { sameGenderOnly: true });
+
+  it('lets a "ride alone" passenger open an empty Tesla but never join an occupied one', () => {
+    expect(isCompatible(rider('WOMAN', { shareRide: false }), pool())).toBe(true);
+    expect(isCompatible(rider('WOMAN', { shareRide: false }), pool(rider('MAN')))).toBe(false);
+  });
+
+  it('never adds anyone to a Tesla with a "ride alone" passenger', () => {
+    expect(isCompatible(rider('MAN'), pool(rider('WOMAN', { shareRide: false })))).toBe(false);
+  });
+
+  it('women-only: only women join her, and she only joins women', () => {
+    expect(isCompatible(rider('WOMAN'), pool(womenOnly))).toBe(true); // Shirin joins Nusrat
+    expect(isCompatible(rider('MAN'), pool(womenOnly))).toBe(false); // Rafiq can't
+    expect(isCompatible(womenOnly, pool(rider('MAN')))).toBe(false); // she won't join a man
+    expect(isCompatible(womenOnly, pool(rider('WOMAN')))).toBe(true);
+  });
+
+  it('men-only works the same way, so conservative men have the same choice', () => {
+    expect(isCompatible(rider('MAN'), pool(menOnly))).toBe(true);
+    expect(isCompatible(rider('WOMAN'), pool(menOnly))).toBe(false);
+    expect(isCompatible(menOnly, pool(rider('WOMAN')))).toBe(false);
+  });
+
+  it('an undisclosed gender never satisfies a same-gender request', () => {
+    expect(isCompatible(rider('UNDISCLOSED'), pool(womenOnly))).toBe(false);
+    expect(isCompatible(womenOnly, pool(rider('UNDISCLOSED')))).toBe(false);
+  });
+
+  it('leaves ordinary sharers unaffected, whatever their gender', () => {
+    expect(isCompatible(rider('MAN'), pool(rider('WOMAN')))).toBe(true);
+    expect(isCompatible(rider('UNDISCLOSED'), pool(rider('MAN')))).toBe(true);
   });
 });
 

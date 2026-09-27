@@ -1,6 +1,13 @@
 import { Prisma, type Pool, type RideRequest } from '@prisma/client';
 import { poolDiscountPaisa } from '../../domain/fare';
-import { isCompatible, rankPools } from '../../domain/matching';
+import {
+  genderPreferencesMet,
+  isCompatible,
+  rankPools,
+  sharingAllowed,
+  type MatchCandidate,
+  type PoolForMatching,
+} from '../../domain/matching';
 import { ACTIVE_POOL_STATUSES, canPoolTransition } from '../../domain/pool-status';
 import { ACTIVE_RIDE_STATUSES, canRideTransition } from '../../domain/ride-status';
 import { AppError, conflict, forbidden, notFound } from '../../lib/errors';
@@ -17,7 +24,7 @@ import { prisma } from '../../lib/prisma';
 // ---------------------------------------------------------------------------------------------
 
 type Tx = Prisma.TransactionClient;
-type JoinResult = 'JOINED' | 'POOL_CLOSED' | 'INCOMPATIBLE' | 'FULL';
+type JoinResult = 'JOINED' | 'POOL_CLOSED' | 'DRIVER_PICKS' | 'RIDING_ALONE' | 'SAME_GENDER_ONLY' | 'INCOMPATIBLE' | 'FULL';
 
 const activeMembers = { status: { in: [...ACTIVE_RIDE_STATUSES] } } satisfies Prisma.RideRequestWhereInput;
 
@@ -43,20 +50,52 @@ export async function claimSeats(tx: Tx, poolId: string, seats: number): Promise
   return updated === 1;
 }
 
-async function joinPool(tx: Tx, ride: RideRequest, poolId: string, actorId: string): Promise<JoinResult> {
+type PoolWithMembers = Prisma.PoolGetPayload<{ include: { members: { include: { dropoff: true } } } }>;
+
+const asCandidate = (ride: RideRequest, dropoff: { xKm: number; yKm: number }): MatchCandidate => ({
+  pickupZone: ride.pickupZone,
+  dropoff,
+  shareRide: ride.shareRide,
+  sameGenderOnly: ride.sameGenderOnly,
+  gender: ride.passengerGender,
+});
+
+const forMatching = (pool: PoolWithMembers): PoolForMatching => ({
+  pickupZone: pool.pickupZone,
+  members: pool.members.map((m) => ({
+    dropoff: m.dropoff,
+    shareRide: m.shareRide,
+    sameGenderOnly: m.sameGenderOnly,
+    gender: m.passengerGender,
+  })),
+});
+
+// `automatic` = the system is adding the rider (not a driver tapping Accept). Then the trip's
+// driver must have "auto-add riders" switched on.
+async function joinPool(tx: Tx, ride: RideRequest, poolId: string, actorId: string, automatic = false): Promise<JoinResult> {
   if (!(await lockOpenPool(tx, poolId))) return 'POOL_CLOSED';
 
+  if (automatic) {
+    // Re-read inside the transaction (after tryAutoMatch's unlocked pre-filter): if the driver
+    // switched auto-add off a moment ago, respect it. A plain read, not a lock: taking the
+    // vehicle lock here would break the vehicle -> pool lock order and risk deadlocks.
+    const vehicle = await tx.vehicle.findFirstOrThrow({ where: { pools: { some: { id: poolId } } } });
+    if (!vehicle.autoAccept) return 'DRIVER_PICKS';
+  }
+
+  // Read under the lock: nobody can join or leave while we decide.
   const pool = await tx.pool.findUniqueOrThrow({
     where: { id: poolId },
     include: { members: { where: activeMembers, include: { dropoff: true } } },
   });
   const dropoff = await tx.zone.findUniqueOrThrow({ where: { code: ride.dropoffZone } });
 
-  const compatible = isCompatible(
-    { pickupZone: ride.pickupZone, dropoff },
-    { pickupZone: pool.pickupZone, memberDropoffs: pool.members.map((m) => m.dropoff) },
-  );
-  if (!compatible) return 'INCOMPATIBLE';
+  const candidate = asCandidate(ride, dropoff);
+  const current = forMatching(pool);
+  // Specific reasons first, so the driver is told *why* a rider can't join.
+  if (!sharingAllowed(candidate, current)) return 'RIDING_ALONE';
+  if (!genderPreferencesMet(candidate, current)) return 'SAME_GENDER_ONLY';
+  if (!isCompatible(candidate, current)) return 'INCOMPATIBLE';
 
   if (!(await claimSeats(tx, poolId, ride.seats))) return 'FULL';
 
@@ -83,11 +122,15 @@ async function joinPool(tx: Tx, ride: RideRequest, poolId: string, actorId: stri
 // Called right after a passenger requests a ride: try to put them in an OPEN pool that's
 // already heading their way. If none fits, the ride stays REQUESTED and waits for a driver.
 export async function tryAutoMatch(ride: RideRequest): Promise<boolean> {
+  // Riding alone never joins an existing Tesla (open pools always have someone in them).
+  if (!ride.shareRide) return false;
+
   const candidates = await prisma.pool.findMany({
     where: {
       status: 'OPEN',
       pickupZone: ride.pickupZone,
-      vehicle: { isOnline: true },
+      // Only Teslas whose driver lets compatible riders join automatically.
+      vehicle: { isOnline: true, autoAccept: true },
     },
     include: { members: { where: activeMembers, include: { dropoff: true } } },
   });
@@ -98,17 +141,14 @@ export async function tryAutoMatch(ride: RideRequest): Promise<boolean> {
     candidates.filter(
       (p) =>
         p.seatsTaken + ride.seats <= p.capacity &&
-        isCompatible(
-          { pickupZone: ride.pickupZone, dropoff },
-          { pickupZone: p.pickupZone, memberDropoffs: p.members.map((m) => m.dropoff) },
-        ),
+        isCompatible(asCandidate(ride, dropoff), forMatching(p)),
     ),
   );
 
   // One short transaction per attempt, so a failed attempt doesn't keep a pool locked.
   for (const pool of worthTrying) {
     try {
-      const result = await prisma.$transaction((tx) => joinPool(tx, ride, pool.id, ride.passengerId));
+      const result = await prisma.$transaction((tx) => joinPool(tx, ride, pool.id, ride.passengerId, true));
       if (result === 'JOINED') return true;
       logger.debug({ rideId: ride.id, poolId: pool.id, result }, 'auto-match attempt failed, trying next pool');
     } catch (err) {
@@ -122,6 +162,9 @@ export async function tryAutoMatch(ride: RideRequest): Promise<boolean> {
 
 const joinFailures: Record<Exclude<JoinResult, 'JOINED'>, AppError> = {
   POOL_CLOSED: conflict('Your current trip is no longer taking passengers', 'POOL_CLOSED'),
+  DRIVER_PICKS: conflict('This driver picks his riders himself', 'DRIVER_PICKS'), // only for automatic joins
+  RIDING_ALONE: conflict('Someone in this trip chose to ride alone, so it can’t be shared', 'RIDING_ALONE'),
+  SAME_GENDER_ONLY: conflict('This would break a same-gender request in this trip', 'SAME_GENDER_ONLY'),
   INCOMPATIBLE: conflict('This passenger is not heading the same way as your current passengers', 'INCOMPATIBLE_ROUTE'),
   FULL: conflict('Not enough free seats for this request', 'POOL_FULL'),
 };

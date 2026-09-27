@@ -69,6 +69,34 @@ export function AuthForm({ mode }: { mode: Mode }) {
               <input {...fieldProps('name')} autoComplete="name" required />
             </Field>
           )}
+          {isSignup && (
+            <fieldset className={styles.gender} aria-describedby={fieldErrors.gender ? 'gender-error' : undefined}>
+              <legend>
+                I am <span className="bn" lang="bn">আমি</span>
+              </legend>
+              {(
+                [
+                  ['WOMAN', 'A woman'],
+                  ['MAN', 'A man'],
+                  ['UNDISCLOSED', 'Prefer not to say'],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value}>
+                  <input type="radio" name="gender" value={value} required />
+                  {label}
+                </label>
+              ))}
+              <small>
+                When you share a ride, your co-riders see your gender, never your name or destination. It also lets
+                you ask for a same-gender ride.
+              </small>
+              {fieldErrors.gender && (
+                <p id="gender-error" className={styles.error} role="alert">
+                  {fieldErrors.gender}
+                </p>
+              )}
+            </fieldset>
+          )}
           <Field label="Email" bnLabel="ইমেইল" htmlFor="email" error={fieldErrors.email}>
             <input {...fieldProps('email')} type="email" autoComplete="email" required />
           </Field>

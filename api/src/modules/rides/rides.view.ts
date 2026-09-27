@@ -9,8 +9,11 @@ export const passengerRideInclude = {
       id: true,
       status: true,
       vehicle: { select: { name: true, plate: true, driver: { select: { name: true } } } },
-      // Only a count: a passenger never learns who else is in the Tesla or where they're going.
-      _count: { select: { members: { where: { status: { not: 'CANCELLED' } } } } },
+      // Co-riders' declared gender ONLY: never their names, ids or destinations.
+      members: {
+        where: { status: { not: 'CANCELLED' } },
+        select: { id: true, passengerGender: true },
+      },
     },
   },
 } satisfies Prisma.RideRequestInclude;
@@ -28,10 +31,13 @@ export function toPassengerRide(ride: PassengerRide) {
     seats: ride.seats,
     distanceKm: ride.distanceKm,
     paymentMethod: ride.paymentMethod,
+    shareRide: ride.shareRide,
+    sameGenderOnly: ride.sameGenderOnly,
     fare: {
       subtotalPaisa: ride.subtotalPaisa,
       // Until the trip starts we don't know if it will be shared, so show both prices.
-      pooledEstimatePaisa: ride.subtotalPaisa - poolDiscountPaisa(ride.subtotalPaisa, true),
+      // Riding alone is never shared, so there is no pooled price.
+      pooledEstimatePaisa: ride.shareRide ? ride.subtotalPaisa - poolDiscountPaisa(ride.subtotalPaisa, true) : null,
       // Set when the trip starts; null until then.
       poolDiscountPaisa: ride.poolDiscountPaisa,
       farePaisa: ride.farePaisa,
@@ -42,8 +48,10 @@ export function toPassengerRide(ride: PassengerRide) {
       status: pool.status,
       vehicle: { name: pool.vehicle.name, plate: pool.vehicle.plate },
       driver: { name: pool.vehicle.driver.name },
-      // Other passengers still in the Tesla (not counting this one).
-      sharedWith: Math.max(0, pool._count.members - (ride.status === 'CANCELLED' ? 0 : 1)),
+      // Other passengers still in the Tesla (not counting this one): how many, and their
+      // declared gender so the rider can decide whether they're comfortable (and cancel if not).
+      sharedWith: pool.members.filter((m) => m.id !== ride.id).length,
+      coRiderGenders: pool.members.filter((m) => m.id !== ride.id).map((m) => m.passengerGender),
     },
     createdAt: ride.createdAt,
     updatedAt: ride.updatedAt,

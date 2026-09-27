@@ -11,6 +11,7 @@ import {
   getMyRideEvents,
   listMyRides,
   requestRide,
+  shareWithAnyone,
 } from './rides.service';
 
 export const ridesRouter = Router();
@@ -51,6 +52,10 @@ ridesRouter.get('/:id', async (req, res) => {
 
 ridesRouter.get('/:id/events', async (req, res) => {
   res.json({ events: await getMyRideEvents(currentUser(req).id, rideId(req.params.id)) });
+});
+
+ridesRouter.post('/:id/share-with-anyone', async (req, res) => {
+  res.json({ ride: await shareWithAnyone(currentUser(req).id, rideId(req.params.id)) });
 });
 
 ridesRouter.post('/:id/cancel', async (req, res) => {

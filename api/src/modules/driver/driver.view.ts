@@ -20,6 +20,9 @@ export function toDriverPool(pool: DriverPool) {
     seats: m.seats,
     status: m.status,
     paymentMethod: m.paymentMethod,
+    shareRide: m.shareRide,
+    sameGenderOnly: m.sameGenderOnly,
+    gender: m.passengerGender,
     subtotalPaisa: m.subtotalPaisa,
     farePaisa: m.farePaisa,
   }));
@@ -60,6 +63,9 @@ export function toFeedRequest(ride: FeedRequest) {
     dropoff: { code: ride.dropoff.code, name: ride.dropoff.name },
     seats: ride.seats,
     distanceKm: ride.distanceKm,
+    shareRide: ride.shareRide,
+    sameGenderOnly: ride.sameGenderOnly,
+    gender: ride.passengerGender,
     subtotalPaisa: ride.subtotalPaisa,
     requestedAt: ride.createdAt,
   };

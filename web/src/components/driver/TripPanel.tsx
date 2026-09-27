@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { taka } from '@/lib/format';
 import { PAYMENT_LABEL, POOL_STATUS } from '@/lib/labels';
 import type { DriverPool } from '@/lib/types';
+import { PreferenceTags } from '../ride/PreferenceTags';
 import { StatusBadge } from '../ride/StatusBadge';
 import { Button } from '../ui/Button';
 import { Alert, EmptyState } from '../ui/Feedback';
@@ -55,6 +56,9 @@ export function TripPanel({ pool, online, onChanged }: { pool: DriverPool | null
   const next = pool.status in NEXT ? NEXT[pool.status as keyof typeof NEXT] : null;
   const canCancel = pool.status === 'OPEN' || pool.status === 'DRIVER_ARRIVED';
   const fareKnown = pool.startedAt !== null;
+  const active = pool.passengers.filter((p) => p.status !== 'CANCELLED');
+  const sameGender = active.find((p) => p.sameGenderOnly && p.gender !== 'UNDISCLOSED');
+  const soloRider = active.find((p) => !p.shareRide);
 
   return (
     <TinPlate title={status.label} bnTitle={status.bn} frame="rani">
@@ -62,6 +66,16 @@ export function TripPanel({ pool, online, onChanged }: { pool: DriverPool | null
         Pickup at <strong>{pool.pickup.name}</strong>
       </p>
       <SeatMeter taken={pool.seatsTaken} capacity={pool.capacity} />
+
+      {pool.status === 'OPEN' && soloRider && (
+        <p className={styles.banner}>{soloRider.name} is riding alone, so nobody else can join this trip.</p>
+      )}
+      {pool.status === 'OPEN' && sameGender && (
+        <p className={styles.banner}>
+          {sameGender.name} asked for a {sameGender.gender === 'WOMAN' ? 'women' : 'men'}-only ride. Only{' '}
+          {sameGender.gender === 'WOMAN' ? 'women' : 'men'} can join this trip, and your list below already reflects that.
+        </p>
+      )}
 
       <ul className={styles.passengers} aria-label="Passengers">
         {pool.passengers.map((p) => (
@@ -71,6 +85,7 @@ export function TripPanel({ pool, online, onChanged }: { pool: DriverPool | null
               <span className={styles.drop}>
                 to {p.dropoff.name} · {p.seats} seat{p.seats > 1 ? 's' : ''} · {PAYMENT_LABEL[p.paymentMethod]}
               </span>
+              <PreferenceTags shareRide={p.shareRide} sameGenderOnly={p.sameGenderOnly} gender={p.gender} />
             </div>
             <div className={styles.right}>
               <span className={styles.fare}>

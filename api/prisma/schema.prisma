@@ -33,6 +33,13 @@ enum RideStatus {
   CANCELLED
 }
 
+// Self-declared at sign-up, used only for same-gender rides (DESIGN.md §4). Not verified.
+enum Gender {
+  WOMAN
+  MAN
+  UNDISCLOSED
+}
+
 enum PaymentMethod {
   CASH
   TESLAPAY
@@ -44,6 +51,7 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
   role         UserRole
+  gender       Gender   @default(UNDISCLOSED)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   vehicle      Vehicle?
@@ -60,6 +68,9 @@ model Vehicle {
   plate    String  @unique
   capacity Int     @db.SmallInt
   isOnline Boolean @default(false) @map("is_online")
+  // "Auto-add riders heading my way": on = compatible riders join this Tesla's trip automatically;
+  // off = they wait in the driver's feed until he accepts them (DESIGN.md §4).
+  autoAccept Boolean @default(true) @map("auto_accept")
 
   driver User   @relation(fields: [driverId], references: [id], onDelete: Restrict)
   pools  Pool[]
@@ -117,6 +128,13 @@ model RideRequest {
   poolDiscountPaisa Int?          @map("pool_discount_paisa") // set when the trip starts
   farePaisa         Int?          @map("fare_paisa") // set when the trip starts
   paymentMethod     PaymentMethod @default(CASH) @map("payment_method")
+  // Consent to pool. false = "ride alone": nobody else is ever added, no discount.
+  shareRide         Boolean       @default(true) @map("share_ride")
+  // "Only share with other women / men": enforced both ways by the matching rules.
+  sameGenderOnly    Boolean       @default(false) @map("same_gender_only")
+  // Snapshot of the passenger's declared gender at booking, so matching (and history) only
+  // needs ride rows. Co-riders see this and nothing else about each other.
+  passengerGender   Gender        @default(UNDISCLOSED) @map("passenger_gender")
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
   cancelledAt       DateTime?     @map("cancelled_at") @db.Timestamptz

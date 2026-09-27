@@ -57,6 +57,37 @@ If more than one pool qualifies, R joins the **fullest** one, and ties go to the
 
 Both paths go through the same `joinPool` function, so capacity and compatibility are enforced in exactly one place.
 
+**The driver decides how he works.** Each Tesla has an **"Auto-add riders heading my way"** switch (`vehicles.auto_accept`, default on). **On:** compatible riders join his open trip automatically. **Off:** they wait in his feed until he taps Accept, for example at the end of his shift, or when he'd rather not add a stop. One rule covers every case: *a rider joins a trip automatically only if that trip's driver has auto-add on*. The switch is re-read inside the join transaction (a plain read, not a lock, to keep the vehicle → pool lock order), so a switch-off applies to every automatic join that starts after it. Auto-match never *starts* a trip: the driver always picks the first rider, and later riders must be within 2 km of every stop.
+
+### Sharing preferences (consent)
+Nobody should end up sharing a Tesla without agreeing to it, or without knowing who with.
+
+**At sign-up,** passengers declare their gender: woman, man or *prefer not to say*. It's self-declared and not verified (see limitations).
+
+**At booking,** a passenger chooses:
+
+| Choice | Effect |
+|---|---|
+| **Share my ride** (default; 25% off if shared) | Normal matching (rules 1–2 above) |
+| **Share, same gender only**: "only share with other women" for women, "only share with other men" for men | Rule 4: they're only pooled with riders who declared the same gender, and only such riders can join them. Enforced for auto-matching **and** driver accepts |
+| **Ride alone** (no discount) | Rule 3: only goes into an empty Tesla, and nobody joins it |
+
+**Once matched,** each passenger sees their co-riders' **declared gender only** ("Sharing with 1 woman, 1 man"), never names, ids or destinations. If they're not comfortable, they can cancel for free until the trip starts. The view updates live as people join or leave.
+
+Design notes:
+- **Symmetric by construction.** Each person's option points at their *own* gender, so a man can never ask for women co-riders. That was the flaw in the first version (a one-sided "prefer women" flag shown to everyone), found in review and replaced by migration `20260927130000_same_gender_rides`. Men get the equivalent option.
+- **Enforced by the system, not the driver.** Because riders declare a gender, matching can honour the request itself. The driver's feed simply doesn't offer riders who can't join, and a banner explains why.
+- **The gender is snapshotted onto the ride** (`ride_requests.passenger_gender`), like `pools.capacity`. Matching then only reads ride rows, and history stays accurate even if a profile changes later.
+- **Riders who didn't declare a gender** can share normally, but can't request, or join, a same-gender ride.
+- **Order doesn't matter, and nobody is "added then told".** If Jashim takes Rafiq first, women-only Nusrat drops out of his feed and can't be added (`409 SAME_GENDER_ONLY`). She's never put in with a man and left to notice and cancel. While she waits, her screen says why ("Waiting for a Tesla with no men on board") and offers **"Share with anyone instead"** (`POST /rides/:id/share-with-anyone`). That only *relaxes* the preference, only while she's still waiting, needs a confirmation, and is logged as a `PREFERENCE_CHANGED` event. After that she's an ordinary sharer and follows the ordinary rule: she joins a compatible trip automatically if its driver has auto-add on, otherwise she reappears in drivers' feeds and a driver picks her. Either way, once matched she sees her co-riders' gender ("Sharing with 1 man") and can still cancel.
+- **Race-safe.** Rules 3 and 4 are checked in `joinPool` under the same pool lock as the seat claim. Tests fire simultaneous accepts, and a mutation check (turning the rule off) makes 6 tests fail.
+- Database guard: `CHECK (NOT same_gender_only OR (share_ride AND passenger_gender <> 'UNDISCLOSED'))`.
+
+**Limitations:** gender is self-declared, so a determined liar can get through (a real service would verify ID). The driver's own gender isn't part of the rule. Stricter preferences mean fewer matches: a longer wait and less chance of the discount. The UI says so at booking.
+
+### Considered and rejected: auto-pull on accept
+We considered automatically pulling every compatible waiting rider into a trip when a driver opens it. We didn't build it: it saves the driver one tap per rider, the feed already lists exactly those riders, and it would also add riders to a trip before its first passenger has seen who they are sharing with.
+
 ## 5. Fare model
 
 All money is stored as **integer paisa** (৳1 = 100 paisa) in `INTEGER` columns.
@@ -220,6 +251,7 @@ erDiagram
 ### Constraints and indexes
 - `CHECK (seats_taken >= 0 AND seats_taken <= capacity)` on `pools`. If the application code has a bug, the database still refuses to overbook.
 - `CHECK (pickup_zone <> dropoff_zone)` and `CHECK (seats BETWEEN 1 AND 3)` on `ride_requests`.
+- `ride_requests_same_gender_check`: same-gender rides require sharing and a declared gender.
 - Partial unique index: **one active pool per vehicle**, `UNIQUE (vehicle_id) WHERE status IN ('OPEN','DRIVER_ARRIVED','STARTED')`.
 - Partial unique index: **one active request per passenger**, `UNIQUE (passenger_id) WHERE status NOT IN ('COMPLETED','CANCELLED')`.
 - `ride_requests (status, pickup_zone)` index for the driver's feed. `ride_requests (passenger_id, created_at DESC)` index for passenger history. `ride_events (ride_request_id)` and `ride_events (pool_id)` indexes for history lookups.

@@ -1,12 +1,14 @@
 // Shapes returned by the API (see api/src/modules/*/*.view.ts).
 
 export type Role = 'PASSENGER' | 'DRIVER';
+export type Gender = 'WOMAN' | 'MAN' | 'UNDISCLOSED';
 
 export type User = {
   id: string;
   name: string;
   email: string;
   role: Role;
+  gender: Gender;
   vehicle?: { id: string; name: string; plate: string; capacity: number; isOnline: boolean } | null;
 };
 
@@ -36,9 +38,11 @@ export type PassengerRide = {
   seats: number;
   distanceKm: number;
   paymentMethod: 'CASH' | 'TESLAPAY';
+  shareRide: boolean;
+  sameGenderOnly: boolean;
   fare: {
     subtotalPaisa: number;
-    pooledEstimatePaisa: number;
+    pooledEstimatePaisa: number | null; // null when riding alone
     poolDiscountPaisa: number | null;
     farePaisa: number | null;
     isFinal: boolean;
@@ -49,6 +53,7 @@ export type PassengerRide = {
     vehicle: { name: string; plate: string };
     driver: { name: string };
     sharedWith: number;
+    coRiderGenders: Gender[]; // declared gender of each co-rider, nothing else
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +70,9 @@ export type DriverPassenger = {
   seats: number;
   status: RideStatus;
   paymentMethod: 'CASH' | 'TESLAPAY';
+  shareRide: boolean;
+  sameGenderOnly: boolean;
+  gender: Gender;
   subtotalPaisa: number;
   farePaisa: number | null;
 };
@@ -86,7 +94,7 @@ export type DriverPool = {
 };
 
 export type DriverStatus = {
-  vehicle: { id: string; name: string; plate: string; capacity: number; isOnline: boolean };
+  vehicle: { id: string; name: string; plate: string; capacity: number; isOnline: boolean; autoAccept: boolean };
   activePool: DriverPool | null;
 };
 
@@ -97,6 +105,9 @@ export type FeedRequest = {
   dropoff: ZoneRef;
   seats: number;
   distanceKm: number;
+  shareRide: boolean;
+  sameGenderOnly: boolean;
+  gender: Gender;
   subtotalPaisa: number;
   requestedAt: string;
 };

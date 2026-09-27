@@ -4,6 +4,45 @@
   padding: 0 16px;
 }
 
+.gender {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: none;
+}
+
+.gender legend {
+  width: 100%;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.gender label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gender input {
+  accent-color: var(--rani-deep);
+}
+
+.gender small {
+  width: 100%;
+  color: var(--ink-soft);
+}
+
+.error {
+  margin: 0;
+  color: var(--vermilion);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
 .switch {
   margin: 18px 0 0;
   text-align: center;

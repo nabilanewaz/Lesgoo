@@ -1,4 +1,4 @@
-import type { RideStatus } from './types';
+import type { Gender, RideStatus } from './types';
 
 // Status wording shown to passengers, with a Bangla line for the painted-sign feel.
 export const RIDE_STATUS: Record<RideStatus, { label: string; bn: string }> = {
@@ -18,6 +18,7 @@ export const EVENT_LABEL: Record<string, string> = {
   TRIP_STARTED: 'Trip started, fare finalised',
   TRIP_COMPLETED: 'Trip completed',
   RIDE_CANCELLED: 'You cancelled the ride',
+  PREFERENCE_CHANGED: 'You chose to share with anyone',
   POOL_CANCELLED: 'The driver cancelled the trip',
 };
 
@@ -44,3 +45,27 @@ export const POOL_STATUS = {
   COMPLETED: { label: 'Trip complete', bn: 'যাত্রা শেষ' },
   CANCELLED: { label: 'Trip cancelled', bn: 'বাতিল' },
 } as const;
+
+// Same-gender wording, from the rider's own declared gender.
+export const SAME_GENDER_OPTION: Record<Exclude<Gender, 'UNDISCLOSED'>, string> = {
+  WOMAN: 'Only share with other women',
+  MAN: 'Only share with other men',
+};
+export const SAME_GENDER_TAG: Record<Exclude<Gender, 'UNDISCLOSED'>, string> = {
+  WOMAN: 'Women-only ride',
+  MAN: 'Men-only ride',
+};
+
+// "1 woman, 1 man": how a passenger learns who they're sharing with (gender only).
+export function describeCoRiders(genders: Gender[]): string {
+  const count = (g: Gender) => genders.filter((x) => x === g).length;
+  const parts = [
+    [count('WOMAN'), 'woman', 'women'],
+    [count('MAN'), 'man', 'men'],
+    [count('UNDISCLOSED'), 'person who didn’t say', 'people who didn’t say'],
+  ] as const;
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`)
+    .join(', ');
+}

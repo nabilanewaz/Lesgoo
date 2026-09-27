@@ -1,0 +1,29 @@
+.tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.tag {
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+}
+
+/* neutral, so it never reads as the (blue) men-only tag */
+.solo {
+  background: #ece4d4;
+}
+
+/* women-only pink, men-only blue */
+.women {
+  background: #ffd0e4;
+}
+
+.men {
+  background: #cfe3ff;
+}
