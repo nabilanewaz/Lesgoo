@@ -23,7 +23,14 @@ export async function getDriverStatus(driverId: string) {
   const vehicle = await getVehicle(driverId);
   const pool = await findActivePool(vehicle.id);
   return {
-    vehicle: { id: vehicle.id, name: vehicle.name, plate: vehicle.plate, capacity: vehicle.capacity, isOnline: vehicle.isOnline },
+    vehicle: {
+      id: vehicle.id,
+      name: vehicle.name,
+      plate: vehicle.plate,
+      capacity: vehicle.capacity,
+      isOnline: vehicle.isOnline,
+      autoAccept: vehicle.autoAccept,
+    },
     activePool: pool ? toDriverPool(pool) : null,
   };
 }
@@ -69,9 +76,17 @@ export async function getRequestFeed(driverId: string) {
 
   if (!pool) return waiting.map(toFeedRequest);
 
-  const memberDropoffs = pool.members.filter((m) => ACTIVE_RIDE_STATUSES.includes(m.status)).map((m) => m.dropoff);
+  // Same rules as joinPool, so the feed only offers riders the driver can actually accept.
+  const members = pool.members
+    .filter((m) => ACTIVE_RIDE_STATUSES.includes(m.status))
+    .map((m) => ({ dropoff: m.dropoff, shareRide: m.shareRide, sameGenderOnly: m.sameGenderOnly, gender: m.passengerGender }));
   return waiting
-    .filter((r) => isCompatible({ pickupZone: r.pickupZone, dropoff: r.dropoff }, { pickupZone: pool.pickupZone, memberDropoffs }))
+    .filter((r) =>
+      isCompatible(
+        { pickupZone: r.pickupZone, dropoff: r.dropoff, shareRide: r.shareRide, sameGenderOnly: r.sameGenderOnly, gender: r.passengerGender },
+        { pickupZone: pool.pickupZone, members },
+      ),
+    )
     .map(toFeedRequest);
 }
 
@@ -84,4 +99,11 @@ export async function getPoolHistory(driverId: string) {
     take: 50,
   });
   return pools.map(toDriverPool);
+}
+
+// The driver decides how he works: compatible riders join automatically, or wait for him.
+export async function setAutoAccept(driverId: string, enabled: boolean) {
+  const vehicle = await getVehicle(driverId);
+  await prisma.vehicle.update({ where: { id: vehicle.id }, data: { autoAccept: enabled } });
+  return getDriverStatus(driverId);
 }

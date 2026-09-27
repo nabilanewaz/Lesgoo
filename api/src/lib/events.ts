@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 export type RideEventType =
   | 'RIDE_REQUESTED'
   | 'RIDE_CANCELLED'
+  | 'PREFERENCE_CHANGED'
   | 'RIDE_MATCHED'
   | 'POOL_OPENED'
   | 'DRIVER_ARRIVED'

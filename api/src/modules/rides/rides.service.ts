@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { calculateFare, estimateFare } from '../../domain/fare';
 import { manhattanKm } from '../../domain/geo';
 import { ACTIVE_RIDE_STATUSES, canRideTransition } from '../../domain/ride-status';
-import { conflict, notFound } from '../../lib/errors';
+import { badRequest, conflict, notFound } from '../../lib/errors';
 import { recordEvent } from '../../lib/events';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
@@ -25,6 +25,14 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
   const distanceKm = manhattanKm(pickup, dropoff);
   const { subtotalPaisa } = calculateFare(distanceKm, input.seats, false);
 
+  // The rider's declared gender is snapshotted onto the ride for matching and history.
+  const { gender } = await prisma.user.findUniqueOrThrow({ where: { id: passengerId }, select: { gender: true } });
+  if (input.sameGenderOnly && gender === 'UNDISCLOSED') {
+    throw badRequest('Same-gender rides need a declared gender', [
+      { path: 'sameGenderOnly', message: 'Same-gender rides are only available if you shared your gender at sign-up' },
+    ]);
+  }
+
   let ride;
   try {
     ride = await prisma.$transaction(async (tx) => {
@@ -37,6 +45,9 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
           distanceKm,
           subtotalPaisa,
           paymentMethod: input.paymentMethod,
+          shareRide: input.shareRide,
+          sameGenderOnly: input.sameGenderOnly,
+          passengerGender: gender,
         },
         include: passengerRideInclude,
       });
@@ -45,7 +56,15 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
         rideRequestId: created.id,
         actorId: passengerId,
         toStatus: 'REQUESTED',
-        data: { pickup: pickup.code, dropoff: dropoff.code, seats: input.seats, distanceKm, subtotalPaisa },
+        data: {
+          pickup: pickup.code,
+          dropoff: dropoff.code,
+          seats: input.seats,
+          distanceKm,
+          subtotalPaisa,
+          shareRide: input.shareRide,
+          sameGenderOnly: input.sameGenderOnly,
+        },
       });
       return created;
     });
@@ -143,5 +162,40 @@ export async function cancelRide(passengerId: string, rideId: string, reason?: s
     await releaseSeats(tx, ride, passengerId);
   });
 
+  return getMyRide(passengerId, rideId);
+}
+
+// A waiting same-gender rider can choose to share with anyone instead (e.g. she's in a hurry).
+// It only ever RELAXES a preference, only while still waiting, and she makes the choice herself.
+// Afterwards she is an ordinary sharer, so the ordinary rule applies: she joins a compatible trip
+// automatically if its driver has auto-add on; otherwise she appears in drivers' feeds.
+export async function shareWithAnyone(passengerId: string, rideId: string) {
+  const ride = await findOwnRide(passengerId, rideId);
+  if (ride.status !== 'REQUESTED') {
+    throw conflict('You can only change this while you’re still waiting for a Tesla', 'INVALID_TRANSITION');
+  }
+  if (!ride.sameGenderOnly) throw conflict('This ride already shares with anyone', 'NOTHING_TO_CHANGE');
+
+  await prisma.$transaction(async (tx) => {
+    // Conditional, like every other state change: if a driver took the ride meanwhile, refuse.
+    const { count } = await tx.rideRequest.updateMany({
+      where: { id: ride.id, status: 'REQUESTED', sameGenderOnly: true },
+      data: { sameGenderOnly: false },
+    });
+    if (count === 0) throw conflict('This ride changed a moment ago. Refresh and try again.', 'STALE_STATE');
+    await recordEvent(tx, {
+      type: 'PREFERENCE_CHANGED',
+      rideRequestId: ride.id,
+      actorId: passengerId,
+      data: { sameGenderOnly: false },
+    });
+  });
+
+  const updated = await prisma.rideRequest.findUniqueOrThrow({ where: { id: ride.id } });
+  try {
+    await tryAutoMatch(updated);
+  } catch (err) {
+    logger.error({ err, rideId: ride.id }, 'auto-match after relaxing preference failed; ride stays REQUESTED');
+  }
   return getMyRide(passengerId, rideId);
 }
