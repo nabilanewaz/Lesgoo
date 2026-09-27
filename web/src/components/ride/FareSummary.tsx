@@ -1,5 +1,5 @@
 import { taka } from '@/lib/format';
-import { PAYMENT_LABEL } from '@/lib/labels';
+import { gotOffEarly, PAYMENT_LABEL } from '@/lib/labels';
 import type { PassengerRide } from '@/lib/types';
 import styles from './FareSummary.module.css';
 
@@ -57,6 +57,11 @@ export function FareSummary({ ride }: { ride: PassengerRide }) {
         <dt>{shared ? 'Pool discount (25%)' : ride.shareRide ? 'Pool discount (nobody shared)' : 'Pool discount (riding alone)'}</dt>
         <dd>−{taka(fare.poolDiscountPaisa ?? 0)}</dd>
       </dl>
+      {ride.droppedOff && gotOffEarly(ride) && (
+        <span className={styles.caption}>
+          You got off early at {ride.droppedOff.name}, so you pay for {ride.distanceKm} km only.
+        </span>
+      )}
       <span className={styles.caption}>Pay by {PAYMENT_LABEL[ride.paymentMethod]}</span>
     </div>
   );

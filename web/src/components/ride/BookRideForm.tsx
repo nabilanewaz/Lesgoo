@@ -13,9 +13,10 @@ import { Alert, Loading } from '../ui/Feedback';
 import { TinPlate } from '../ui/TinPlate';
 import styles from './BookRideForm.module.css';
 
-type Props = { initialTrip: Trip; onBooked: (ride: PassengerRide) => void };
+// `note` explains a pre-filled rebooking (e.g. after a breakdown).
+type Props = { initialTrip: Trip; note?: string; onBooked: (ride: PassengerRide) => void };
 
-export function BookRideForm({ initialTrip, onBooked }: Props) {
+export function BookRideForm({ initialTrip, note, onBooked }: Props) {
   const zones = useZones();
   const { user } = useSession();
   const gender = user?.gender ?? 'UNDISCLOSED';
@@ -61,6 +62,7 @@ export function BookRideForm({ initialTrip, onBooked }: Props) {
         <Loading label="Loading zones…" />
       ) : (
         <form onSubmit={onSubmit} noValidate>
+          {note && <Alert tone="info">{note}</Alert>}
           {error && <Alert>{error}</Alert>}
           <TripFields zones={zones.data.zones} value={trip} onChange={setTrip} idPrefix="book" errors={fieldErrors} />
 

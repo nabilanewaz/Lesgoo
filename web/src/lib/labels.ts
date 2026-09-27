@@ -20,7 +20,16 @@ export const EVENT_LABEL: Record<string, string> = {
   RIDE_CANCELLED: 'You cancelled the ride',
   PREFERENCE_CHANGED: 'You chose to share with anyone',
   POOL_CANCELLED: 'The driver cancelled the trip',
+  PASSENGER_DROPPED_OFF: 'You were dropped off',
+  TESLA_BROKE_DOWN: 'The Tesla broke down, no charge',
 };
+
+// True when a finished ride ended somewhere other than where it was booked to.
+export const gotOffEarly = (r: { dropoff: { code: string }; droppedOff: { code: string } | null }) =>
+  r.droppedOff !== null && r.droppedOff.code !== r.dropoff.code;
+
+// Cancelled because the Tesla broke down (the API's cancel reason says so).
+export const brokeDown = (r: { cancelReason: string | null }) => r.cancelReason?.startsWith('The Tesla broke down') ?? false;
 
 export const PAYMENT_LABEL = { CASH: 'Cash', TESLAPAY: 'TeslaPay' } as const;
 

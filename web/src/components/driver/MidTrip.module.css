@@ -1,0 +1,103 @@
+/* Roadside controls: generous tap targets (min 56px) for use with one hand in traffic. */
+
+.big {
+  min-height: 56px;
+  font-size: 1.1rem;
+}
+
+.dropOff {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.panel {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--paper-2);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius);
+}
+
+.danger {
+  background: #ffe3dc;
+}
+
+.question {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+.question [lang='bn'] {
+  display: block;
+  font-size: 1.3rem;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.reasons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.reason {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 104px;
+  padding: 10px 6px;
+  font: inherit;
+  font-weight: 800;
+  color: var(--ink);
+  background: var(--paper);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-hard);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.reason:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--outline);
+}
+
+.reason:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.reasonIcon {
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+
+.reasonEn {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.note {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  text-align: center;
+}

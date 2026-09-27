@@ -35,6 +35,7 @@ export type PassengerRide = {
   status: RideStatus;
   pickup: ZoneRef;
   dropoff: ZoneRef;
+  droppedOff: ZoneRef | null; // where they actually got off; differs from dropoff if early
   seats: number;
   distanceKm: number;
   paymentMethod: 'CASH' | 'TESLAPAY';
@@ -57,6 +58,7 @@ export type PassengerRide = {
   } | null;
   createdAt: string;
   updatedAt: string;
+  completedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
 };
@@ -75,6 +77,9 @@ export type DriverPassenger = {
   gender: Gender;
   subtotalPaisa: number;
   farePaisa: number | null;
+  droppedOff: ZoneRef | null;
+  cancelReason: string | null;
+  stopsOnTheWay: ZoneRef[]; // where they could get off early, nearest first (only while riding)
 };
 
 export type DriverPool = {
