@@ -8,10 +8,29 @@ import { Alert } from '../ui/Feedback';
 import styles from './VehicleBar.module.css';
 
 // Bullet's number plate and the online/offline switch.
-export function VehicleBar({ status, onChanged }: { status: DriverStatus; onChanged: () => void }) {
+export function VehicleBar({ status, onChanged }: { status: DriverStatus; onChanged: () => Promise<unknown> | void }) {
   const { vehicle } = status;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Optimistic: the switch flips the moment it's clicked, and flips back if the server refuses.
+  const [autoAcceptOptimistic, setAutoAcceptOptimistic] = useState<boolean | null>(null);
+  const autoAccept = autoAcceptOptimistic ?? vehicle.autoAccept;
+
+  async function toggleAutoAccept() {
+    const next = !autoAccept;
+    setAutoAcceptOptimistic(next);
+    setPending(true);
+    setError(null);
+    try {
+      await api('/driver/auto-accept', { method: 'POST', body: { enabled: next } });
+      await onChanged(); // wait for fresh server state before dropping the optimistic value
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change the setting');
+    } finally {
+      setAutoAcceptOptimistic(null);
+      setPending(false);
+    }
+  }
 
   async function toggle() {
     setPending(true);
@@ -54,6 +73,17 @@ export function VehicleBar({ status, onChanged }: { status: DriverStatus; onChan
             <span lang="bn">{vehicle.isOnline ? 'অনলাইন' : 'অফলাইন'}</span>
           </span>
         </button>
+        <label className={styles.auto}>
+          <input type="checkbox" role="switch" checked={autoAccept} onChange={toggleAutoAccept} disabled={pending} />
+          <span>
+            Auto-add riders heading my way
+            <small>
+              {autoAccept
+                ? 'On: compatible riders join your trip automatically.'
+                : 'Off: riders wait in your list until you accept them.'}
+            </small>
+          </span>
+        </label>
         {error && <Alert>{error}</Alert>}
       </div>
     </section>

@@ -18,6 +18,18 @@ export function FareSummary({ ride }: { ride: PassengerRide }) {
   }
 
   if (!fare.isFinal) {
+    // pooledEstimatePaisa is null when the passenger chose to ride alone: one price, no discount.
+    if (fare.pooledEstimatePaisa === null) {
+      return (
+        <div className={styles.box}>
+          <span className={styles.caption}>
+            Fare, riding alone <span lang="bn">· ভাড়া</span>
+          </span>
+          <strong className={styles.big}>{taka(fare.subtotalPaisa)}</strong>
+          <span className={styles.caption}>No pool discount when you ride alone · {PAYMENT_LABEL[ride.paymentMethod]}</span>
+        </div>
+      );
+    }
     return (
       <div className={styles.box}>
         <span className={styles.caption}>
@@ -42,7 +54,7 @@ export function FareSummary({ ride }: { ride: PassengerRide }) {
       <dl className={styles.breakdown}>
         <dt>Trip ({ride.distanceKm} km{ride.seats > 1 ? `, ${ride.seats} seats` : ''})</dt>
         <dd>{taka(fare.subtotalPaisa)}</dd>
-        <dt>{shared ? 'Pool discount (25%)' : 'Pool discount (rode alone)'}</dt>
+        <dt>{shared ? 'Pool discount (25%)' : ride.shareRide ? 'Pool discount (nobody shared)' : 'Pool discount (riding alone)'}</dt>
         <dd>−{taka(fare.poolDiscountPaisa ?? 0)}</dd>
       </dl>
       <span className={styles.caption}>Pay by {PAYMENT_LABEL[ride.paymentMethod]}</span>

@@ -87,6 +87,29 @@
   background: var(--turmeric);
 }
 
+.auto {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 300px;
+  font-weight: 700;
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.auto input {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: var(--turmeric);
+}
+
+.auto small {
+  display: block;
+  font-weight: 500;
+  color: #cfe6df;
+}
+
 .switchLabel {
   display: flex;
   flex-direction: column;

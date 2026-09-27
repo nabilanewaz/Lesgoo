@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useZones } from '@/lib/hooks';
+import { SAME_GENDER_OPTION } from '@/lib/labels';
+import { useSession } from '@/lib/session';
 import type { PassengerRide } from '@/lib/types';
 import { PriceCompare } from '../trip/PriceCompare';
 import { TripFields, type Trip } from '../trip/TripFields';
@@ -15,8 +17,12 @@ type Props = { initialTrip: Trip; onBooked: (ride: PassengerRide) => void };
 
 export function BookRideForm({ initialTrip, onBooked }: Props) {
   const zones = useZones();
+  const { user } = useSession();
+  const gender = user?.gender ?? 'UNDISCLOSED';
   const [trip, setTrip] = useState<Trip>(initialTrip);
   const [payment, setPayment] = useState<'CASH' | 'TESLAPAY'>('CASH');
+  const [shareRide, setShareRide] = useState(true);
+  const [sameGenderOnly, setSameGenderOnly] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -29,7 +35,14 @@ export function BookRideForm({ initialTrip, onBooked }: Props) {
     try {
       const { ride } = await api<{ ride: PassengerRide }>('/rides', {
         method: 'POST',
-        body: { pickupZone: trip.pickup, dropoffZone: trip.dropoff, seats: trip.seats, paymentMethod: payment },
+        body: {
+          pickupZone: trip.pickup,
+          dropoffZone: trip.dropoff,
+          seats: trip.seats,
+          paymentMethod: payment,
+          shareRide,
+          sameGenderOnly: shareRide && sameGenderOnly && gender !== 'UNDISCLOSED',
+        },
       });
       onBooked(ride);
     } catch (err) {
@@ -50,6 +63,40 @@ export function BookRideForm({ initialTrip, onBooked }: Props) {
         <form onSubmit={onSubmit} noValidate>
           {error && <Alert>{error}</Alert>}
           <TripFields zones={zones.data.zones} value={trip} onChange={setTrip} idPrefix="book" errors={fieldErrors} />
+
+          <fieldset className={styles.payment}>
+            <legend>
+              Sharing <span className="bn" lang="bn">শেয়ার</span>
+            </legend>
+            <label className={shareRide ? styles.chosen : undefined}>
+              <input type="radio" name="share" checked={shareRide} onChange={() => setShareRide(true)} />
+              Share my ride (save 25%)
+            </label>
+            <label className={!shareRide ? styles.chosen : undefined}>
+              <input type="radio" name="share" checked={!shareRide} onChange={() => setShareRide(false)} />
+              Ride alone
+            </label>
+          </fieldset>
+
+          {!shareRide ? (
+            <p className={styles.soloNote}>Nobody else will be added to your Tesla. You pay the full fare.</p>
+          ) : gender !== 'UNDISCLOSED' ? (
+            <label className={styles.preference}>
+              <input type="checkbox" checked={sameGenderOnly} onChange={(e) => setSameGenderOnly(e.target.checked)} />
+              <span>
+                {SAME_GENDER_OPTION[gender]}
+                <small>
+                  We only put you with riders who declared the same gender, and only they can join you. Fewer matches can
+                  mean a longer wait.
+                </small>
+              </span>
+            </label>
+          ) : (
+            <p className={styles.soloNote}>
+              Same-gender rides are available to riders who shared their gender at sign-up.
+            </p>
+          )}
+          {fieldErrors.sameGenderOnly && <Alert>{fieldErrors.sameGenderOnly}</Alert>}
 
           <fieldset className={styles.payment}>
             <legend>
@@ -75,7 +122,9 @@ export function BookRideForm({ initialTrip, onBooked }: Props) {
             Request ride
           </Button>
           <p className={styles.note}>
-            If a Tesla is already heading your way, you&apos;ll join it straight away. Otherwise the next free driver picks you up.
+            {shareRide
+              ? 'If a Tesla is already heading your way, you’ll join it straight away. Otherwise the next free driver picks you up.'
+              : 'The next free driver picks you up.'}
           </p>
         </form>
       )}

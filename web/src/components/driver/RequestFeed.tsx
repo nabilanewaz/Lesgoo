@@ -5,16 +5,17 @@ import { api } from '@/lib/api';
 import { taka, timeAgo } from '@/lib/format';
 import { useRequestFeed } from '@/lib/hooks';
 import type { DriverPool } from '@/lib/types';
+import { PreferenceTags } from '../ride/PreferenceTags';
 import { Button } from '../ui/Button';
 import { Alert, EmptyState, Loading } from '../ui/Feedback';
 import { TinPlate } from '../ui/TinPlate';
 import styles from './RequestFeed.module.css';
 
-type Props = { online: boolean; pool: DriverPool | null; onAccepted: () => void };
+type Props = { online: boolean; autoAccept: boolean; pool: DriverPool | null; onAccepted: () => void };
 
 // Riders waiting for a Tesla. The API decides what's "relevant": everyone who fits when
 // Bullet has no trip, only compatible riders once a trip is open, nobody once it's moving.
-export function RequestFeed({ online, pool, onAccepted }: Props) {
+export function RequestFeed({ online, autoAccept, pool, onAccepted }: Props) {
   const feed = useRequestFeed(online);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,13 @@ export function RequestFeed({ online, pool, onAccepted }: Props) {
       ) : (
         <>
           <p className={styles.subtitle}>{subtitle}</p>
+          {pool?.status === 'OPEN' && (
+            <p className={styles.mode}>
+              {autoAccept
+                ? 'Auto-add is on: new riders heading your way join automatically.'
+                : 'Auto-add is off: nobody joins until you tap Accept.'}
+            </p>
+          )}
           {error && <Alert>{error}</Alert>}
           {feed.data.requests.length === 0 ? (
             <EmptyState title="Nobody waiting right now">
@@ -69,6 +77,7 @@ export function RequestFeed({ online, pool, onAccepted }: Props) {
                     <span className={styles.when}>
                       ≈ {taka(r.subtotalPaisa)} · {timeAgo(r.requestedAt)}
                     </span>
+                    <PreferenceTags shareRide={r.shareRide} sameGenderOnly={r.sameGenderOnly} gender={r.gender} />
                   </div>
                   <Button
                     variant="secondary"

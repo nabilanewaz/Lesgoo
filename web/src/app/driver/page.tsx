@@ -25,7 +25,7 @@ function Dashboard() {
       <VehicleBar key={activePool ? `${activePool.id}-${activePool.status}` : 'idle'} status={status.data} onChanged={refresh} />
       <div className={styles.grid}>
         <TripPanel pool={activePool} online={vehicle.isOnline} onChanged={refresh} />
-        <RequestFeed online={vehicle.isOnline} pool={activePool} onAccepted={refresh} />
+        <RequestFeed online={vehicle.isOnline} autoAccept={vehicle.autoAccept} pool={activePool} onAccepted={refresh} />
       </div>
       <div className={styles.history}>
         {/* re-fetch history whenever the active trip appears, changes or ends */}

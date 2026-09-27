@@ -13,6 +13,7 @@ import styles from './history.module.css';
 function fareText(ride: PassengerRide) {
   if (ride.status === 'CANCELLED') return 'No charge';
   if (ride.fare.isFinal) return taka(ride.fare.farePaisa ?? 0);
+  if (ride.fare.pooledEstimatePaisa === null) return `est. ${taka(ride.fare.subtotalPaisa)}`; // riding alone
   return `est. ${taka(ride.fare.pooledEstimatePaisa)}–${taka(ride.fare.subtotalPaisa)}`;
 }
 

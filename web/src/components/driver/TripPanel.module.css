@@ -2,6 +2,16 @@
   margin: 0 0 10px;
 }
 
+.banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  background: #ffe6f1;
+  border: 2px solid var(--rani);
+  border-radius: 10px;
+}
+
 .passengers {
   margin: 0 0 12px;
   padding: 0;

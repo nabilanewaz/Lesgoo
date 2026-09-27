@@ -34,6 +34,35 @@
   accent-color: var(--rani-deep);
 }
 
+.preference {
+  display: flex;
+  gap: 10px;
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  font-weight: 700;
+  background: #fff;
+  border: 2px dashed var(--rani);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.preference input {
+  margin-top: 5px;
+  accent-color: var(--rani-deep);
+}
+
+.preference small {
+  display: block;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.soloNote {
+  margin: -4px 0 16px;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
 .note {
   margin: 12px 0 0;
   font-size: 0.88rem;

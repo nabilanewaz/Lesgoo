@@ -24,6 +24,38 @@
   color: var(--ink);
 }
 
+.prefNote {
+  margin: -6px 0 14px;
+  font-size: 0.88rem;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.relax {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px;
+  text-align: center;
+  background: #fff;
+  border: 2px dashed var(--rani);
+  border-radius: 12px;
+}
+
+.relax p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.relaxButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 .tesla {
   display: flex;
   align-items: center;
