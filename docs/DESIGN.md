@@ -116,6 +116,10 @@ A trip counts as **shared** if the pool has 2 or more active requests when it `S
 
 If they had each ridden alone, the fares would be ৳70 and ৳90.
 
+**Getting off early.** If a passenger gets off before their destination, they pay for the part they rode, as Uber does: the fare is recalculated for the km from pickup to where they got off, with the same pool discount they had at the start, and it is **never more than the fare fixed at the start**. Rafiq, pooled, booked to Gulshan 1 (৳67.50) but got off at Mohakhali: 2 km, 7000 − 1750 = **5250 (৳52.50)**. Alone to Gulshan 1 (৳90) but off at Gulshan 2: 1 km = **5000 (৳50)**. The booked destination and fare stay in the audit trail.
+
+**Breakdown.** If the Tesla breaks down, passengers still on board pay **nothing**. Uber charges for the distance travelled, but that needs the driver to say where the breakdown happened, and the service failed the rider, not the other way round. Passengers already dropped off keep their fare. The trade-off is that the driver earns nothing for the unfinished part of the trip.
+
 **Why integers and not floats or DECIMAL?** Floating-point numbers can't represent 0.1 exactly, so sums drift. DECIMAL is exact, but the Node `pg` driver returns it as a string, and it's easy to accidentally do float maths on it. With integer paisa, every amount is exact and every calculation is plain integer maths. We only format it as ৳ at display time. BASE_FARE and PER_KM are multiples of 1000 paisa, so the 25% discount always comes out to whole paisa. `floor` is there anyway so the rounding direction is explicit (it favours the platform by less than 1 paisa).
 
 ## 6. Lifecycle
@@ -129,9 +133,10 @@ stateDiagram-v2
     [*] --> OPEN: driver accepts first request
     OPEN --> DRIVER_ARRIVED: driver marks arrival (pool locks)
     DRIVER_ARRIVED --> STARTED: driver starts trip (fares finalised)
-    STARTED --> COMPLETED: driver completes trip
-    OPEN --> CANCELLED: driver cancels / last passenger cancels
-    DRIVER_ARRIVED --> CANCELLED: driver cancels / last passenger cancels
+    STARTED --> COMPLETED: last passenger dropped off (or "end trip")
+    OPEN --> CANCELLED: driver cancels / last passenger cancels / breakdown
+    DRIVER_ARRIVED --> CANCELLED: driver cancels / last passenger cancels / breakdown
+    STARTED --> CANCELLED: breakdown only
 ```
 
 ### Ride request (one passenger)
@@ -142,21 +147,37 @@ stateDiagram-v2
     REQUESTED --> MATCHED: joins a pool
     MATCHED --> DRIVER_ARRIVED
     DRIVER_ARRIVED --> STARTED
-    STARTED --> COMPLETED
+    STARTED --> COMPLETED: driver drops them off (at the destination or early)
     REQUESTED --> CANCELLED: passenger cancels
-    MATCHED --> CANCELLED: passenger or driver cancels
-    DRIVER_ARRIVED --> CANCELLED: passenger or driver cancels
+    MATCHED --> CANCELLED: passenger or driver cancels, or breakdown
+    DRIVER_ARRIVED --> CANCELLED: passenger or driver cancels, or breakdown
+    STARTED --> CANCELLED: breakdown only (no charge)
 ```
 
 Once a pool has members, request statuses after `MATCHED` follow the pool's status. They are updated **in the same transaction** as the pool, so the two can't disagree.
 
 ### Rules
-- Any transition not shown above is rejected with `409 Conflict`. That includes starting a trip that hasn't had an arrival, and cancelling after `STARTED`.
+- Any transition not shown above is rejected with `409 Conflict`. That includes starting a trip that hasn't had an arrival. Neither the passenger nor a plain driver "cancel" can end a `STARTED` ride: only a drop-off or a breakdown can.
 - Passengers can cancel up until `STARTED`. Cancelling gives the seats back. If nobody active is left in the pool, the pool becomes `CANCELLED` and the Tesla is free.
 - A driver can't go offline while they have an active pool.
 - A driver's feed of "relevant requests" is empty while they're offline or a trip is underway. With no trip, it shows every waiting request that fits in the Tesla, oldest first. With an `OPEN` trip, it shows only requests that pass the matching rule and fit in the seats left.
 - When the driver cancels, every active passenger becomes `CANCELLED` with the reason "Driver cancelled the trip". They can book again straight away.
 - Every transition writes a row to `ride_events`, so we can later explain exactly what happened.
+
+### Mid-trip events
+Designed for a driver at the roadside who may not read English well: research on low-literacy interfaces (Medhi et al., Microsoft Research; Islam et al. 2023) points to icons with local-language labels, very little text, big buttons and one simple step at a time. So there are only two new driver actions, each one tap plus at most one question answered by tapping a picture or a place name:
+
+| What happened | Driver taps | Result |
+|---|---|---|
+| Passenger reached their destination | ✅ **পৌঁছেছে · Reached Mohakhali** on that passenger | Their ride is `COMPLETED` at the fixed fare. The others ride on. |
+| Passenger got off early | 🚶 **আগে নেমেছে · Got off early** → the place | Only areas **on the way** are offered (zones that add no detour, nearest first). Fare for the km ridden (§5). |
+| The Tesla can't go on | 🛠️ **গাড়ি নষ্ট · Tesla broke down** → 🛞 / 🔋 / ⚠️ | Everyone still booked or on board is `CANCELLED` with no charge and gets **Book another Tesla**, destination filled in. The Tesla goes **offline**. |
+
+- The last drop-off completes the trip by itself, so there's no separate "complete" step to forget. (`POST /driver/pool/complete` still drops everyone left at their destination.)
+- Only the driver ends a ride. Getting off is physical, and a passenger-side button could be used to dodge the fare.
+- If no area lies between pickup and destination (Banani → Mohakhali), only "Reached" is shown.
+- Races use the same tools as §8. A drop-off locks the pool and is conditional on the ride still being `STARTED`, so a double tap drops a passenger once. Two last drop-offs at once complete the trip once. A breakdown takes the vehicle lock and then the pool lock, so it and a drop-off can't both claim the same passenger. Tests hold the pool lock until both requests are queued behind it, so they check the worst case every time, not just when the timing happens to line up.
+- Limitation: without GPS, "where they got off" is only as precise as our zones. A real deployment would use GPS for both early drop-offs and breakdowns.
 
 ### Access rules
 - Only passengers can request rides, and only drivers can use driver endpoints. A wrong role gets `403`.
@@ -254,6 +275,7 @@ erDiagram
 - `ride_requests_same_gender_check`: same-gender rides require sharing and a declared gender.
 - Partial unique index: **one active pool per vehicle**, `UNIQUE (vehicle_id) WHERE status IN ('OPEN','DRIVER_ARRIVED','STARTED')`.
 - Partial unique index: **one active request per passenger**, `UNIQUE (passenger_id) WHERE status NOT IN ('COMPLETED','CANCELLED')`.
+- `ride_requests_dropped_off_check`: only a `COMPLETED` ride has a `dropped_off_zone`, and it is never the pickup zone.
 - `ride_requests (status, pickup_zone)` index for the driver's feed. `ride_requests (passenger_id, created_at DESC)` index for passenger history. `ride_events (ride_request_id)` and `ride_events (pool_id)` indexes for history lookups.
 
 ## 8. Concurrency: the last seat
