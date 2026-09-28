@@ -7,9 +7,9 @@ WORKDIR /app
 
 FROM base AS build
 COPY package.json package-lock.json ./
-RUN npm ci
+# The schema first: `npm ci` runs the postinstall script, which generates the Prisma client from it.
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 # The app, then the demo seed (plain JS, so the runtime image doesn't need tsx).

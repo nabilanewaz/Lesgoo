@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { createApp } from '../src/app';
+import { createApp } from '../src/create-app';
 import { prisma } from '../src/lib/prisma';
 
 export const app = createApp();
