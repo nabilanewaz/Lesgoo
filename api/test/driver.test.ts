@@ -90,8 +90,8 @@ describe('a full pooled trip', () => {
 
     const started = await jashim.post('/api/driver/pool/start').expect(200);
     expect(started.body.activePool.passengers).toEqual([
-      expect.objectContaining({ name: 'Nusrat', dropoff: { code: 'MOHAKHALI', name: 'Mohakhali' }, farePaisa: 5250 }),
-      expect.objectContaining({ name: 'Rafiq', dropoff: { code: 'GULSHAN_1', name: 'Gulshan 1' }, farePaisa: 6750 }),
+      expect.objectContaining({ name: 'Nusrat', dropoff: expect.objectContaining({ code: 'MOHAKHALI', name: 'Mohakhali' }), farePaisa: 5250 }),
+      expect.objectContaining({ name: 'Rafiq', dropoff: expect.objectContaining({ code: 'GULSHAN_1', name: 'Gulshan 1' }), farePaisa: 6750 }),
     ]);
     expect(started.body.activePool.totalFarePaisa).toBe(12000);
 

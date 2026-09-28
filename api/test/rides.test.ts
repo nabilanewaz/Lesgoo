@@ -15,7 +15,7 @@ describe('fare estimate', () => {
       .query({ pickupZone: 'BANANI', dropoffZone: 'MOHAKHALI' })
       .expect(200);
 
-    expect(res.body.estimate.solo).toMatchObject({ distanceKm: 2, farePaisa: 7000 });
+    expect(res.body.estimate.solo).toMatchObject({ distanceM: 2000, farePaisa: 7000 });
     expect(res.body.estimate.pooled).toMatchObject({ poolDiscountPaisa: 1750, farePaisa: 5250 });
   });
 });
@@ -29,7 +29,7 @@ describe('requesting a ride', () => {
       status: 'REQUESTED',
       pickup: { code: 'BANANI', name: 'Banani' },
       dropoff: { code: 'MOHAKHALI', name: 'Mohakhali' },
-      distanceKm: 2,
+      distanceM: 2000,
       paymentMethod: 'CASH',
       fare: { subtotalPaisa: 7000, pooledEstimatePaisa: 5250, farePaisa: null, isFinal: false },
     });
@@ -122,7 +122,7 @@ describe('cancellation', () => {
     // Pools and the driver flow arrive in later steps; put the ride mid-trip directly.
     const jashim = await createDriver();
     const pool = await prisma.pool.create({
-      data: { vehicleId: jashim.vehicle!.id, pickupZone: 'BANANI', capacity: 3, seatsTaken: 1, status: 'STARTED' },
+      data: { vehicleId: jashim.vehicle!.id, pickupZone: 'BANANI', meetingSpotCode: 'BANANI_KAKOLI', capacity: 3, seatsTaken: 1, status: 'STARTED' },
     });
     await prisma.rideRequest.update({ where: { id: body.ride.id }, data: { status: 'STARTED', poolId: pool.id } });
 

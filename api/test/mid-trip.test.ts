@@ -54,10 +54,10 @@ async function queuedBehindPoolLock<T>(poolId: string, waiters: number, start: (
       await tx.$queryRaw`SELECT id FROM pools WHERE id = ${poolId}::uuid FOR UPDATE`;
       pending = start().map((p) => Promise.resolve(p));
       for (let i = 0; i < 250; i++) {
-        const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`
+        const [row] = await prisma.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM pg_stat_activity
           WHERE datname = current_database() AND wait_event_type = 'Lock'`;
-        if (n >= waiters) return;
+        if ((row?.n ?? 0) >= waiters) return;
         await new Promise((r) => setTimeout(r, 20));
       }
       throw new Error(`only some requests reached the lock`);
@@ -133,7 +133,7 @@ describe('getting off early', () => {
       status: 'COMPLETED',
       dropoff: { code: 'GULSHAN_1' }, // what he booked
       droppedOff: { code: 'MOHAKHALI', name: 'Mohakhali' }, // where he actually got off
-      distanceKm: 2,
+      distanceM: 2000,
       fare: { subtotalPaisa: 7000, poolDiscountPaisa: 1750, farePaisa: 5250 },
     });
 

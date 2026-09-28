@@ -75,7 +75,7 @@ describe("Bullet's capacity", () => {
   it('is enforced by the seat claim itself, even when called directly', async () => {
     const jashim = await createJashimOnline();
     const pool = await prisma.pool.create({
-      data: { vehicleId: jashim.vehicle.id, pickupZone: 'BANANI', capacity: 3, seatsTaken: 2 },
+      data: { vehicleId: jashim.vehicle.id, pickupZone: 'BANANI', meetingSpotCode: 'BANANI_KAKOLI', capacity: 3, seatsTaken: 2 },
     });
 
     expect(await prisma.$transaction((tx) => claimSeats(tx, pool.id, 2))).toBe(false);
@@ -87,7 +87,7 @@ describe("Bullet's capacity", () => {
   it('is also guarded by the database: a direct overbooking write is rejected', async () => {
     const jashim = await createJashimOnline();
     const pool = await prisma.pool.create({
-      data: { vehicleId: jashim.vehicle.id, pickupZone: 'BANANI', capacity: 3, seatsTaken: 3 },
+      data: { vehicleId: jashim.vehicle.id, pickupZone: 'BANANI', meetingSpotCode: 'BANANI_KAKOLI', capacity: 3, seatsTaken: 3 },
     });
     await expect(prisma.pool.update({ where: { id: pool.id }, data: { seatsTaken: 4 } })).rejects.toThrow(
       /pools_seats_taken_check/,
@@ -176,10 +176,11 @@ describe('matching rules', () => {
     const n = await requestRide(nusrat.agent, 'MOHAKHALI');
     await acceptRequest(jashim.id, n.body.ride.id);
 
-    // Rafiq from Gulshan 2 to Gulshan 1: nearby destination, but a different pickup.
+    // Rafiq from Gulshan 2 to Gulshan 1: nearby destination, but a different pickup. Jashim is
+    // told Rafiq is too far from where his riders are meeting him (Kakoli, in Banani).
     const r = await requestRide(rafiq.agent, 'GULSHAN_1', 1, 'GULSHAN_2');
     expect(r.body.ride.status).toBe('REQUESTED');
-    await expect(acceptRequest(jashim.id, r.body.ride.id)).rejects.toMatchObject({ code: 'INCOMPATIBLE_ROUTE' });
+    await expect(acceptRequest(jashim.id, r.body.ride.id)).rejects.toMatchObject({ code: 'PICKUP_TOO_FAR' });
   });
 
   it('does not auto-match into a pool whose driver has arrived (the passenger list is locked)', async () => {

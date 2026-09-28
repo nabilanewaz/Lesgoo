@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateFare, earlyDropOffFare, estimateFare, poolDiscountPaisa } from '../src/domain/fare';
-import { manhattanKm, zonesOnTheWay } from '../src/domain/geo';
+import { manhattanKm, manhattanM, zonesOnTheWay } from '../src/domain/geo';
 import { isCompatible, rankPools } from '../src/domain/matching';
 import { canRideTransition, passengerCanCancel } from '../src/domain/ride-status';
 
@@ -18,8 +18,8 @@ describe('distance', () => {
 
 describe('fare (DESIGN.md §5 worked example)', () => {
   it("prices Nusrat's pooled Banani → Mohakhali trip at ৳52.50", () => {
-    expect(calculateFare(2, 1, true)).toEqual({
-      distanceKm: 2,
+    expect(calculateFare(2000, 1, true)).toEqual({
+      distanceM: 2000,
       seats: 1,
       baseFarePaisa: 3000,
       distanceChargePaisa: 4000,
@@ -30,20 +30,20 @@ describe('fare (DESIGN.md §5 worked example)', () => {
   });
 
   it("prices Rafiq's pooled Banani → Gulshan 1 trip at ৳67.50", () => {
-    expect(calculateFare(3, 1, true)).toMatchObject({ subtotalPaisa: 9000, poolDiscountPaisa: 2250, farePaisa: 6750 });
+    expect(calculateFare(3000, 1, true)).toMatchObject({ subtotalPaisa: 9000, poolDiscountPaisa: 2250, farePaisa: 6750 });
   });
 
   it('charges the full price when nobody shared the Tesla', () => {
-    expect(calculateFare(2, 1, false)).toMatchObject({ poolDiscountPaisa: 0, farePaisa: 7000 });
-    expect(calculateFare(3, 1, false).farePaisa).toBe(9000);
+    expect(calculateFare(2000, 1, false)).toMatchObject({ poolDiscountPaisa: 0, farePaisa: 7000 });
+    expect(calculateFare(3000, 1, false).farePaisa).toBe(9000);
   });
 
   it('charges per seat', () => {
-    expect(calculateFare(2, 2, false)).toMatchObject({ baseFarePaisa: 6000, distanceChargePaisa: 8000, farePaisa: 14000 });
+    expect(calculateFare(2000, 2, false)).toMatchObject({ baseFarePaisa: 6000, distanceChargePaisa: 8000, farePaisa: 14000 });
   });
 
   it('shows both solo and pooled estimates before booking', () => {
-    const estimate = estimateFare(2, 1);
+    const estimate = estimateFare(2000, 1);
     expect(estimate.solo.farePaisa).toBe(7000);
     expect(estimate.pooled.farePaisa).toBe(5250);
   });
@@ -54,17 +54,39 @@ describe('fare (DESIGN.md §5 worked example)', () => {
   });
 
   it('refuses non-integer inputs instead of producing float money', () => {
-    expect(() => calculateFare(2.5, 1, true)).toThrow();
-    expect(() => calculateFare(2, 0, true)).toThrow();
+    expect(() => calculateFare(2000.5, 1, true)).toThrow();
+    expect(() => calculateFare(2000, 0, true)).toThrow();
+  });
+
+  it('charges per started 100 m, like a taxi meter: ৳2 for each', () => {
+    expect(calculateFare(1400, 1, false)).toMatchObject({ distanceChargePaisa: 2800, farePaisa: 5800 }); // 14 steps
+    expect(calculateFare(1401, 1, false)).toMatchObject({ distanceChargePaisa: 3000, farePaisa: 6000 }); // 15th step started
+    expect(calculateFare(1, 1, false)).toMatchObject({ distanceChargePaisa: 200 });
+  });
+
+  it('prices different spots in the same area differently: Chairman Bari → Amtoli is ৳44', () => {
+    const chairmanBari = { xM: -50, yM: -680 };
+    const amtoli = { xM: 0, yM: -2000 };
+    const distance = manhattanM(chairmanBari, amtoli); // 50 + 1320 = 1370 m → 14 steps
+    expect(distance).toBe(1370);
+    expect(calculateFare(distance, 1, false).farePaisa).toBe(5800);
+    expect(calculateFare(distance, 1, true).farePaisa).toBe(4350); // shared: ৳43.50
   });
 });
 
 describe('matching rule (DESIGN.md §4)', () => {
+  const at = (p: { xKm: number; yKm: number }) => ({ xM: p.xKm * 1000, yM: p.yKm * 1000 });
   const GULSHAN_2 = { xKm: 1, yKm: 0 };
+  const KAKOLI = at(BANANI);
   const plain = { shareRide: true, sameGenderOnly: false, gender: 'UNDISCLOSED' as const };
-  const sharer = (dropoff: { xKm: number; yKm: number }, pickupZone = 'BANANI') => ({ pickupZone, dropoff, ...plain });
-  const member = (dropoff: { xKm: number; yKm: number }) => ({ dropoff, ...plain });
-  const poolWithNusrat = { pickupZone: 'BANANI', members: [member(MOHAKHALI)] };
+  const sharer = (dropoff: { xKm: number; yKm: number }, pickupZone = 'BANANI', pickup = KAKOLI) => ({
+    pickupZone,
+    pickup,
+    dropoff: at(dropoff),
+    ...plain,
+  });
+  const member = (dropoff: { xKm: number; yKm: number }) => ({ dropoff: at(dropoff), ...plain });
+  const poolWithNusrat = { pickupZone: 'BANANI', meetingSpot: KAKOLI, members: [member(MOHAKHALI)] };
 
   it('pools Rafiq with Nusrat: same pickup, destinations 1 km apart', () => {
     expect(isCompatible(sharer(GULSHAN_1), poolWithNusrat)).toBe(true);
@@ -80,8 +102,15 @@ describe('matching rule (DESIGN.md §4)', () => {
 
   it('requires closeness to EVERY member, not just one', () => {
     // Gulshan 2 is 2 km from Gulshan 1 but 3 km from Mohakhali
-    const pool = { pickupZone: 'BANANI', members: [member(MOHAKHALI), member(GULSHAN_1)] };
+    const pool = { pickupZone: 'BANANI', meetingSpot: KAKOLI, members: [member(MOHAKHALI), member(GULSHAN_1)] };
     expect(isCompatible(sharer(GULSHAN_2), pool)).toBe(false);
+  });
+
+  it('adds a rider from another spot in the area only if the meeting spot is a short walk away', () => {
+    const superMarket = { xM: 480, yM: -130 }; // 610 m from Kakoli along the streets
+    const nextDoor = { xM: 300, yM: -150 }; // 450 m
+    expect(isCompatible(sharer(GULSHAN_1, 'BANANI', superMarket), poolWithNusrat)).toBe(false);
+    expect(isCompatible(sharer(GULSHAN_1, 'BANANI', nextDoor), poolWithNusrat)).toBe(true);
   });
 
   it('fills the fullest Tesla first, then the oldest', () => {
@@ -94,16 +123,24 @@ describe('matching rule (DESIGN.md §4)', () => {
 
 describe('sharing preferences', () => {
   type G = 'WOMAN' | 'MAN' | 'UNDISCLOSED';
+  const KAKOLI = { xM: 0, yM: 0 };
   const rider = (gender: G, extra: { shareRide?: boolean; sameGenderOnly?: boolean } = {}) => ({
     pickupZone: 'BANANI',
-    dropoff: GULSHAN_1,
+    pickup: KAKOLI,
+    dropoff: { xM: 1000, yM: -2000 },
     gender,
     shareRide: extra.shareRide ?? true,
     sameGenderOnly: extra.sameGenderOnly ?? false,
   });
   const pool = (...members: ReturnType<typeof rider>[]) => ({
     pickupZone: 'BANANI',
-    members: members.map((m) => ({ gender: m.gender, shareRide: m.shareRide, sameGenderOnly: m.sameGenderOnly, dropoff: MOHAKHALI })),
+    meetingSpot: KAKOLI,
+    members: members.map((m) => ({
+      gender: m.gender,
+      shareRide: m.shareRide,
+      sameGenderOnly: m.sameGenderOnly,
+      dropoff: { xM: 0, yM: -2000 },
+    })),
   });
   const womenOnly = rider('WOMAN', { sameGenderOnly: true });
   const menOnly = rider('MAN', { sameGenderOnly: true });
@@ -191,14 +228,14 @@ describe('getting off early (DESIGN.md §5)', () => {
   });
 
   it('charges a solo rider for the km ridden: Gulshan 2 after 1 km is ৳50', () => {
-    expect(earlyDropOffFare(1, 1, false, 9000)).toMatchObject({ subtotalPaisa: 5000, poolDiscountPaisa: 0, farePaisa: 5000 });
+    expect(earlyDropOffFare(1000, 1, false, 9000)).toMatchObject({ subtotalPaisa: 5000, poolDiscountPaisa: 0, farePaisa: 5000 });
   });
 
   it('keeps the pool discount for a shared rider: Mohakhali after 2 km is ৳52.50', () => {
-    expect(earlyDropOffFare(2, 1, true, 6750)).toMatchObject({ subtotalPaisa: 7000, poolDiscountPaisa: 1750, farePaisa: 5250 });
+    expect(earlyDropOffFare(2000, 1, true, 6750)).toMatchObject({ subtotalPaisa: 7000, poolDiscountPaisa: 1750, farePaisa: 5250 });
   });
 
   it('never charges more than the fare fixed at the start', () => {
-    expect(earlyDropOffFare(3, 1, false, 6750)).toMatchObject({ subtotalPaisa: 9000, poolDiscountPaisa: 2250, farePaisa: 6750 });
+    expect(earlyDropOffFare(3000, 1, false, 6750)).toMatchObject({ subtotalPaisa: 9000, poolDiscountPaisa: 2250, farePaisa: 6750 });
   });
 });
