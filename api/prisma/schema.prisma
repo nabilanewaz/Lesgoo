@@ -89,27 +89,56 @@ model Zone {
   dropoffs    RideRequest[] @relation("DropoffZone")
   droppedOffs RideRequest[] @relation("DroppedOffZone")
   pools       Pool[]
+  spots       Spot[]
 
   @@map("zones")
 }
 
-model Pool {
-  id          String     @id @default(uuid()) @db.Uuid
-  vehicleId   String     @map("vehicle_id") @db.Uuid
-  pickupZone  String     @map("pickup_zone")
-  status      PoolStatus @default(OPEN)
-  capacity    Int        @db.SmallInt // snapshot of vehicle capacity when the pool was created
-  seatsTaken  Int        @default(0) @map("seats_taken") @db.SmallInt
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  arrivedAt   DateTime?  @map("arrived_at") @db.Timestamptz
-  startedAt   DateTime?  @map("started_at") @db.Timestamptz
-  completedAt DateTime?  @map("completed_at") @db.Timestamptz
-  cancelledAt DateTime?  @map("cancelled_at") @db.Timestamptz
+// Reference data: well-known landmarks inside each area where a Tesla stops (bus stops, circles,
+// markets), checked on OpenStreetMap and inserted by the migration. The driver sees the Bangla
+// name first; lat/lon only feed the "Navigate" button. xM/yM place the spot on the fare grid in
+// metres: the area's main spot sits on the area's grid point (DESIGN.md §3).
+model Spot {
+  code      String  @id
+  zoneCode  String  @map("zone_code")
+  name      String
+  nameBn    String  @map("name_bn")
+  lat       Float
+  lon       Float
+  xM        Int     @map("x_m")
+  yM        Int     @map("y_m")
+  isMain    Boolean @default(false) @map("is_main") // one per area (partial unique index)
+  sortOrder Int     @map("sort_order") @db.SmallInt
 
-  vehicle Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
-  zone    Zone          @relation(fields: [pickupZone], references: [code])
-  members RideRequest[]
-  events  RideEvent[]
+  zone     Zone          @relation(fields: [zoneCode], references: [code])
+  pickups  RideRequest[] @relation("PickupSpot")
+  dropoffs RideRequest[] @relation("DropoffSpot")
+  pools    Pool[]
+
+  @@index([zoneCode])
+  @@map("spots")
+}
+
+model Pool {
+  id              String     @id @default(uuid()) @db.Uuid
+  vehicleId       String     @map("vehicle_id") @db.Uuid
+  pickupZone      String     @map("pickup_zone")
+  // Where every rider of this trip meets the Tesla: the first rider's pickup spot.
+  meetingSpotCode String     @map("meeting_spot")
+  status          PoolStatus @default(OPEN)
+  capacity        Int        @db.SmallInt // snapshot of vehicle capacity when the pool was created
+  seatsTaken      Int        @default(0) @map("seats_taken") @db.SmallInt
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  arrivedAt       DateTime?  @map("arrived_at") @db.Timestamptz
+  startedAt       DateTime?  @map("started_at") @db.Timestamptz
+  completedAt     DateTime?  @map("completed_at") @db.Timestamptz
+  cancelledAt     DateTime?  @map("cancelled_at") @db.Timestamptz
+
+  vehicle     Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  zone        Zone          @relation(fields: [pickupZone], references: [code])
+  meetingSpot Spot          @relation(fields: [meetingSpotCode], references: [code])
+  members     RideRequest[]
+  events      RideEvent[]
 
   @@index([status, pickupZone])
   @@index([vehicleId, createdAt(sort: Desc)])
@@ -122,9 +151,12 @@ model RideRequest {
   poolId            String?       @map("pool_id") @db.Uuid
   pickupZone        String        @map("pickup_zone")
   dropoffZone       String        @map("dropoff_zone")
+  // Exact places inside those areas. The area of each spot is always the ride's zone.
+  pickupSpotCode    String        @map("pickup_spot")
+  dropoffSpotCode   String        @map("dropoff_spot")
   seats             Int           @db.SmallInt
   status            RideStatus    @default(REQUESTED)
-  distanceKm        Int           @map("distance_km")
+  distanceM         Int           @map("distance_m") // grid distance in metres, charged per started 100 m
   subtotalPaisa     Int           @map("subtotal_paisa")
   poolDiscountPaisa Int?          @map("pool_discount_paisa") // set when the trip starts
   farePaisa         Int?          @map("fare_paisa") // set when the trip starts
@@ -145,12 +177,14 @@ model RideRequest {
   droppedOffZone    String?       @map("dropped_off_zone")
   completedAt       DateTime?     @map("completed_at") @db.Timestamptz
 
-  passenger  User        @relation(fields: [passengerId], references: [id], onDelete: Restrict)
-  pool       Pool?       @relation(fields: [poolId], references: [id], onDelete: Restrict)
-  pickup     Zone        @relation("PickupZone", fields: [pickupZone], references: [code])
-  dropoff    Zone        @relation("DropoffZone", fields: [dropoffZone], references: [code])
-  droppedOff Zone?       @relation("DroppedOffZone", fields: [droppedOffZone], references: [code], onDelete: Restrict)
-  events     RideEvent[]
+  passenger   User        @relation(fields: [passengerId], references: [id], onDelete: Restrict)
+  pool        Pool?       @relation(fields: [poolId], references: [id], onDelete: Restrict)
+  pickup      Zone        @relation("PickupZone", fields: [pickupZone], references: [code])
+  pickupSpot  Spot        @relation("PickupSpot", fields: [pickupSpotCode], references: [code])
+  dropoffSpot Spot        @relation("DropoffSpot", fields: [dropoffSpotCode], references: [code])
+  dropoff     Zone        @relation("DropoffZone", fields: [dropoffZone], references: [code])
+  droppedOff  Zone?       @relation("DroppedOffZone", fields: [droppedOffZone], references: [code], onDelete: Restrict)
+  events      RideEvent[]
 
   @@index([status, pickupZone])
   @@index([passengerId, createdAt(sort: Desc)])

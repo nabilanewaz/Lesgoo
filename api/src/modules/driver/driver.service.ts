@@ -81,12 +81,20 @@ export async function getRequestFeed(driverId: string) {
   // Same rules as joinPool, so the feed only offers riders the driver can actually accept.
   const members = pool.members
     .filter((m) => ACTIVE_RIDE_STATUSES.includes(m.status))
-    .map((m) => ({ dropoff: m.dropoff, shareRide: m.shareRide, sameGenderOnly: m.sameGenderOnly, gender: m.passengerGender }));
+    .map((m) => ({ dropoff: m.dropoffSpot, shareRide: m.shareRide, sameGenderOnly: m.sameGenderOnly, gender: m.passengerGender }));
+  const trip = { pickupZone: pool.pickupZone, meetingSpot: pool.meetingSpot, members };
   return waiting
     .filter((r) =>
       isCompatible(
-        { pickupZone: r.pickupZone, dropoff: r.dropoff, shareRide: r.shareRide, sameGenderOnly: r.sameGenderOnly, gender: r.passengerGender },
-        { pickupZone: pool.pickupZone, members },
+        {
+          pickupZone: r.pickupZone,
+          pickup: r.pickupSpot,
+          dropoff: r.dropoffSpot,
+          shareRide: r.shareRide,
+          sameGenderOnly: r.sameGenderOnly,
+          gender: r.passengerGender,
+        },
+        trip,
       ),
     )
     .map(toFeedRequest);

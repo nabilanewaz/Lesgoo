@@ -27,7 +27,7 @@ function rideId(value: unknown): string {
 // Public: lets anyone see a price before signing in.
 ridesRouter.get('/estimate', async (req, res) => {
   const q = estimateQuerySchema.parse(req.query);
-  res.json({ estimate: await estimateTrip(q.pickupZone, q.dropoffZone, q.seats) });
+  res.json({ estimate: await estimateTrip(q) });
 });
 
 // Everything below: signed-in passengers only, and only their own rides.
