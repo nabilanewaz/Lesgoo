@@ -46,7 +46,7 @@ function RideScreen() {
     );
   }
 
-  const initialTrip = rebook ?? {
+  const initialTrip: Trip = rebook ?? {
     pickup: params.get('pickup') ?? 'BANANI',
     dropoff: params.get('dropoff') ?? 'MOHAKHALI',
     seats: Math.min(3, Math.max(1, Number(params.get('seats')) || 1)),

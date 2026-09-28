@@ -6,6 +6,19 @@ export function taka(paisa: number): string {
   return rest === 0 ? `৳${grouped}` : `৳${grouped}.${String(rest).padStart(2, '0')}`;
 }
 
+// Distances arrive in metres. Shown to one decimal, without a trailing ".0": 2 km, 1.4 km.
+export function km(metres: number): string {
+  return `${Number((metres / 1000).toFixed(1))} km`;
+}
+
+// Opens a spot in the phone's maps app. `drive` gives the driver turn-by-turn directions.
+export function mapsLink(spot: { lat: number; lon: number }, drive = false): string {
+  const at = `${spot.lat},${spot.lon}`;
+  return drive
+    ? `https://www.google.com/maps/dir/?api=1&destination=${at}&travelmode=driving`
+    : `https://www.google.com/maps/search/?api=1&query=${at}`;
+}
+
 const BN_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 
 // Bengali numerals, for decorative numbering (১, ২, ৩).

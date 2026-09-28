@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { km, mapsLink } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { brokeDown, CANCELLABLE_STATUSES, gotOffEarly, PAYMENT_LABEL, RIDE_STATUS, describeCoRiders } from '@/lib/labels';
 import type { Gender, PassengerRide } from '@/lib/types';
 import { Wheel } from '../art/Wheel';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Feedback';
+import { SpotName } from '../ui/SpotName';
 import { TinPlate } from '../ui/TinPlate';
 import { FareSummary } from './FareSummary';
 import { PreferenceTags } from './PreferenceTags';
@@ -19,7 +21,14 @@ type Props = {
   ride: PassengerRide;
   onChanged: () => void; // refetch after an action
   // Shown once the ride is over. After a breakdown it carries the trip to rebook.
-  onBookAnother?: (rebook?: { pickup: string; dropoff: string; seats: number; note: string }) => void;
+  onBookAnother?: (rebook?: {
+    pickup: string;
+    pickupSpot: string;
+    dropoff: string;
+    dropoffSpot: string;
+    seats: number;
+    note: string;
+  }) => void;
 };
 
 const OTHER_GENDER = { WOMAN: 'men', MAN: 'women', UNDISCLOSED: '' } as const;
@@ -34,11 +43,11 @@ function headline(ride: PassengerRide, gender: Gender): string {
       }
       return 'Looking for a Tesla heading your way…';
     case 'MATCHED':
-      return `${driver} are coming to ${ride.pickup.name}.`;
+      return `${driver} are coming to ${ride.pool?.meetingSpot.name ?? ride.pickup.spot.name}.`;
     case 'DRIVER_ARRIVED':
-      return `${ride.pool?.vehicle.name ?? 'Your Tesla'} is waiting at ${ride.pickup.name}. Hop on!`;
+      return `${ride.pool?.vehicle.name ?? 'Your Tesla'} is waiting at ${ride.pool?.meetingSpot.name ?? ride.pickup.spot.name}. Hop on!`;
     case 'STARTED':
-      return `Riding to ${ride.dropoff.name}. Hold on tight.`;
+      return `Riding to ${ride.dropoff.spot.name}, ${ride.dropoff.name}. Hold on tight.`;
     case 'COMPLETED':
       if (ride.droppedOff && gotOffEarly(ride)) return `You got off at ${ride.droppedOff.name}, on the way to ${ride.dropoff.name}.`;
       return `You made it to ${ride.dropoff.name}.`;
@@ -119,19 +128,40 @@ export function RideStatusCard({ ride, onChanged, onBookAnother }: Props) {
       </div>
 
       <p className={styles.route}>
-        <strong>{ride.pickup.name}</strong> →{' '}
+        <strong>{ride.pickup.spot.name}</strong>, {ride.pickup.name} →{' '}
         {ride.droppedOff && gotOffEarly(ride) ? (
           <>
-            <s>{ride.dropoff.name}</s> <strong>{ride.droppedOff.name}</strong>
+            <s>
+              {ride.dropoff.spot.name}, {ride.dropoff.name}
+            </s>{' '}
+            <strong>{ride.droppedOff.name}</strong>
           </>
         ) : (
-          <strong>{ride.dropoff.name}</strong>
+          <>
+            <strong>{ride.dropoff.spot.name}</strong>, {ride.dropoff.name}
+          </>
         )}{' '}
-        · {ride.distanceKm} km · {ride.seats}{' '}
+        · {km(ride.distanceM)} · {ride.seats}{' '}
         seat{ride.seats > 1 ? 's' : ''} · {PAYMENT_LABEL[ride.paymentMethod]}
         <br />
         <PreferenceTags shareRide={ride.shareRide} sameGenderOnly={ride.sameGenderOnly} gender={user?.gender ?? 'UNDISCLOSED'} />
       </p>
+
+      {ride.pool && (ride.status === 'MATCHED' || ride.status === 'DRIVER_ARRIVED') && (
+        <div className={styles.meet}>
+          <span className={styles.meetLabel}>
+            Meet {ride.pool.vehicle.name} at <span lang="bn">· দেখা করুন</span>
+          </span>
+          <SpotName spot={ride.pool.meetingSpot} area={ride.pickup.name} size="big" />
+          {ride.pool.meetingSpot.code !== ride.pickup.spot.code && (
+            // They joined a trip that meets a short walk from where they booked.
+            <span className={styles.walk}>A short walk from {ride.pickup.spot.name}, where you booked.</span>
+          )}
+          <a href={mapsLink(ride.pool.meetingSpot)} target="_blank" rel="noreferrer" className={styles.mapLink}>
+            Open in Maps
+          </a>
+        </div>
+      )}
 
       {ride.pool && (
         <div className={styles.tesla}>
@@ -225,7 +255,9 @@ export function RideStatusCard({ ride, onChanged, onBookAnother }: Props) {
             onClick={() =>
               onBookAnother({
                 pickup: ride.pickup.code,
+                pickupSpot: ride.pickup.spot.code,
                 dropoff: ride.dropoff.code,
+                dropoffSpot: ride.dropoff.spot.code,
                 seats: ride.seats,
                 note: brokeMidTrip
                   ? `Your destination is filled in. Choose where you are now.`

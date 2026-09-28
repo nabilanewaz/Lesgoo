@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { taka, timeAgo } from '@/lib/format';
+import { km, taka, timeAgo } from '@/lib/format';
 import { useRequestFeed } from '@/lib/hooks';
 import type { DriverPool } from '@/lib/types';
 import { PreferenceTags } from '../ride/PreferenceTags';
@@ -71,8 +71,12 @@ export function RequestFeed({ online, autoAccept, pool, onAccepted }: Props) {
                 <li key={r.rideId}>
                   <div className={styles.info}>
                     <strong>{r.passengerName}</strong>
+                    <span className={styles.route}>
+                      <strong lang="bn">{r.pickup.spot.nameBn}</strong> → <strong lang="bn">{r.dropoff.spot.nameBn}</strong>
+                    </span>
                     <span>
-                      {r.pickup.name} → {r.dropoff.name} · {r.distanceKm} km · {r.seats} seat{r.seats > 1 ? 's' : ''}
+                      {r.pickup.spot.name}, {r.pickup.name} → {r.dropoff.spot.name}, {r.dropoff.name} · {km(r.distanceM)} ·{' '}
+                      {r.seats} seat{r.seats > 1 ? 's' : ''}
                     </span>
                     <span className={styles.when}>
                       ≈ {taka(r.subtotalPaisa)} · {timeAgo(r.requestedAt)}

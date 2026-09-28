@@ -104,3 +104,32 @@
 .confirmText {
   font-weight: 700;
 }
+
+/* Where to meet the Tesla: the most important line while waiting to be picked up. */
+.meet {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  text-align: center;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+}
+
+.meetLabel {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.walk {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.mapLink {
+  font-weight: 800;
+  color: var(--cobalt);
+}

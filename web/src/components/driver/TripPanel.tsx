@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { taka } from '@/lib/format';
+import { mapsLink, taka } from '@/lib/format';
 import { gotOffEarly, PAYMENT_LABEL, POOL_STATUS } from '@/lib/labels';
 import type { DriverPool } from '@/lib/types';
 import { PreferenceTags } from '../ride/PreferenceTags';
 import { StatusBadge } from '../ride/StatusBadge';
 import { Button } from '../ui/Button';
 import { Alert, EmptyState } from '../ui/Feedback';
+import { SpotName } from '../ui/SpotName';
 import { TinPlate } from '../ui/TinPlate';
 import { BreakdownButton, DropOffButtons, type BreakdownReason } from './MidTrip';
 import { SeatMeter } from './SeatMeter';
@@ -81,9 +82,18 @@ export function TripPanel({ pool, online, onChanged }: { pool: DriverPool | null
 
   return (
     <TinPlate title={status.label} bnTitle={status.bn} frame="rani">
-      <p className={styles.pickup}>
-        Pickup at <strong>{pool.pickup.name}</strong>
-      </p>
+      <div className={styles.meet}>
+        <span className={styles.meetLabel}>
+          <span lang="bn">যাত্রী তুলুন</span> · Pick up at
+        </span>
+        <SpotName spot={pool.meetingSpot} area={pool.pickup.name} size="big" />
+        {pool.status === 'OPEN' && (
+          // Opens Google Maps with driving directions (it speaks Bangla); we don't build our own map.
+          <a className={styles.navigate} href={mapsLink(pool.meetingSpot, true)} target="_blank" rel="noreferrer">
+            <span aria-hidden>🧭</span> <span lang="bn">রাস্তা দেখুন</span> · Navigate
+          </a>
+        )}
+      </div>
       <SeatMeter taken={pool.seatsTaken} capacity={pool.capacity} />
 
       {pool.status === 'OPEN' && soloRider && (
@@ -102,7 +112,22 @@ export function TripPanel({ pool, online, onChanged }: { pool: DriverPool | null
             <div>
               <strong>{p.name}</strong>
               <span className={styles.drop}>
-                to {p.dropoff.name} · {p.seats} seat{p.seats > 1 ? 's' : ''} · {PAYMENT_LABEL[p.paymentMethod]}
+                to <strong lang="bn">{p.dropoff.spot.nameBn}</strong> · {p.dropoff.spot.name}, {p.dropoff.name}
+                {riding && p.status === 'STARTED' && (
+                  <a
+                    className={styles.directions}
+                    href={mapsLink(p.dropoff.spot, true)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Directions to ${p.dropoff.spot.name}`}
+                  >
+                    🧭
+                  </a>
+                )}
+              </span>
+              <span className={styles.drop}>
+                {p.seats} seat{p.seats > 1 ? 's' : ''} · {PAYMENT_LABEL[p.paymentMethod]}
+                {p.pickupSpot.code !== pool.meetingSpot.code && ` · walks from ${p.pickupSpot.name}`}
               </span>
               {p.droppedOff && gotOffEarly(p) && <span className={styles.early}>Got off early at {p.droppedOff.name}</span>}
               <PreferenceTags shareRide={p.shareRide} sameGenderOnly={p.sameGenderOnly} gender={p.gender} />

@@ -1,5 +1,42 @@
-.pickup {
-  margin: 0 0 10px;
+/* Where to pick everyone up: the one thing the driver must read, so it's the biggest text. */
+.meet {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin: 0 0 12px;
+}
+
+.meetLabel {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.navigate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  margin-top: 4px;
+  padding: 8px 20px;
+  font-weight: 800;
+  color: #fff;
+  text-decoration: none;
+  background: var(--cobalt);
+  border: 3px solid var(--outline);
+  border-radius: 999px;
+  box-shadow: var(--shadow-hard);
+}
+
+.navigate:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--outline);
+}
+
+.directions {
+  margin-left: 6px;
+  text-decoration: none;
+  font-size: 1.1rem;
 }
 
 .banner {

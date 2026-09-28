@@ -7,7 +7,7 @@ import { SAME_GENDER_OPTION } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import type { PassengerRide } from '@/lib/types';
 import { PriceCompare } from '../trip/PriceCompare';
-import { TripFields, type Trip } from '../trip/TripFields';
+import { TripFields, withSpots, type Trip } from '../trip/TripFields';
 import { Button } from '../ui/Button';
 import { Alert, Loading } from '../ui/Feedback';
 import { TinPlate } from '../ui/TinPlate';
@@ -28,6 +28,9 @@ export function BookRideForm({ initialTrip, note, onBooked }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  // The trip with a spot at each end (the area's main spot until the rider picks another).
+  const full = zones.data ? withSpots(trip, zones.data.zones) : null;
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -37,8 +40,8 @@ export function BookRideForm({ initialTrip, note, onBooked }: Props) {
       const { ride } = await api<{ ride: PassengerRide }>('/rides', {
         method: 'POST',
         body: {
-          pickupZone: trip.pickup,
-          dropoffZone: trip.dropoff,
+          pickupSpot: full!.pickupSpot,
+          dropoffSpot: full!.dropoffSpot,
           seats: trip.seats,
           paymentMethod: payment,
           shareRide,
@@ -118,7 +121,7 @@ export function BookRideForm({ initialTrip, note, onBooked }: Props) {
             ))}
           </fieldset>
 
-          <PriceCompare trip={trip} />
+          <PriceCompare trip={full!} />
 
           <Button type="submit" loading={pending} disabled={trip.pickup === trip.dropoff} full>
             Request ride
