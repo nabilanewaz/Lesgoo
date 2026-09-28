@@ -42,3 +42,7 @@
 .when {
   color: var(--ink-soft);
 }
+
+.route {
+  font-size: 1.05rem;
+}

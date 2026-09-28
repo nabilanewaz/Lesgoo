@@ -4,6 +4,11 @@
   gap: 12px;
 }
 
+/* One end of the trip: the area, then the exact spot in it. */
+.end {
+  min-width: 0;
+}
+
 @media (max-width: 520px) {
   .row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

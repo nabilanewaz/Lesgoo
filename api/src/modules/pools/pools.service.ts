@@ -1,11 +1,12 @@
 import { Prisma, type Pool, type RideRequest } from '@prisma/client';
-import { earlyDropOffFare, poolDiscountPaisa } from '../../domain/fare';
-import { manhattanKm, zonesOnTheWay } from '../../domain/geo';
+import { calculateFare, earlyDropOffFare, poolDiscountPaisa } from '../../domain/fare';
+import { manhattanM, zonesOnTheWay, type SpotPoint } from '../../domain/geo';
 import {
   genderPreferencesMet,
   isCompatible,
   rankPools,
   sharingAllowed,
+  withinWalkOfMeetingSpot,
   type MatchCandidate,
   type PoolForMatching,
 } from '../../domain/matching';
@@ -25,7 +26,15 @@ import { prisma } from '../../lib/prisma';
 // ---------------------------------------------------------------------------------------------
 
 type Tx = Prisma.TransactionClient;
-type JoinResult = 'JOINED' | 'POOL_CLOSED' | 'DRIVER_PICKS' | 'RIDING_ALONE' | 'SAME_GENDER_ONLY' | 'INCOMPATIBLE' | 'FULL';
+type JoinResult =
+  | 'JOINED'
+  | 'POOL_CLOSED'
+  | 'DRIVER_PICKS'
+  | 'TOO_FAR_TO_WALK'
+  | 'RIDING_ALONE'
+  | 'SAME_GENDER_ONLY'
+  | 'INCOMPATIBLE'
+  | 'FULL';
 
 const activeMembers = { status: { in: [...ACTIVE_RIDE_STATUSES] } } satisfies Prisma.RideRequestWhereInput;
 
@@ -51,11 +60,17 @@ export async function claimSeats(tx: Tx, poolId: string, seats: number): Promise
   return updated === 1;
 }
 
-type PoolWithMembers = Prisma.PoolGetPayload<{ include: { members: { include: { dropoff: true } } } }>;
+// What matching needs to know about a pool: its meeting spot and each member's drop-off spot.
+const poolForMatchingInclude = {
+  meetingSpot: true,
+  members: { where: activeMembers, include: { dropoffSpot: true } },
+} satisfies Prisma.PoolInclude;
+type PoolWithMembers = Prisma.PoolGetPayload<{ include: typeof poolForMatchingInclude }>;
 
-const asCandidate = (ride: RideRequest, dropoff: { xKm: number; yKm: number }): MatchCandidate => ({
+const asCandidate = (ride: RideRequest, spots: { pickup: SpotPoint; dropoff: SpotPoint }): MatchCandidate => ({
   pickupZone: ride.pickupZone,
-  dropoff,
+  pickup: spots.pickup,
+  dropoff: spots.dropoff,
   shareRide: ride.shareRide,
   sameGenderOnly: ride.sameGenderOnly,
   gender: ride.passengerGender,
@@ -63,8 +78,9 @@ const asCandidate = (ride: RideRequest, dropoff: { xKm: number; yKm: number }): 
 
 const forMatching = (pool: PoolWithMembers): PoolForMatching => ({
   pickupZone: pool.pickupZone,
+  meetingSpot: pool.meetingSpot,
   members: pool.members.map((m) => ({
-    dropoff: m.dropoff,
+    dropoff: m.dropoffSpot,
     shareRide: m.shareRide,
     sameGenderOnly: m.sameGenderOnly,
     gender: m.passengerGender,
@@ -85,15 +101,13 @@ async function joinPool(tx: Tx, ride: RideRequest, poolId: string, actorId: stri
   }
 
   // Read under the lock: nobody can join or leave while we decide.
-  const pool = await tx.pool.findUniqueOrThrow({
-    where: { id: poolId },
-    include: { members: { where: activeMembers, include: { dropoff: true } } },
-  });
-  const dropoff = await tx.zone.findUniqueOrThrow({ where: { code: ride.dropoffZone } });
+  const pool = await tx.pool.findUniqueOrThrow({ where: { id: poolId }, include: poolForMatchingInclude });
+  const spots = await rideSpots(tx, ride);
 
-  const candidate = asCandidate(ride, dropoff);
+  const candidate = asCandidate(ride, spots);
   const current = forMatching(pool);
   // Specific reasons first, so the driver is told *why* a rider can't join.
+  if (!withinWalkOfMeetingSpot(candidate, current)) return 'TOO_FAR_TO_WALK';
   if (!sharingAllowed(candidate, current)) return 'RIDING_ALONE';
   if (!genderPreferencesMet(candidate, current)) return 'SAME_GENDER_ONLY';
   if (!isCompatible(candidate, current)) return 'INCOMPATIBLE';
@@ -108,6 +122,23 @@ async function joinPool(tx: Tx, ride: RideRequest, poolId: string, actorId: stri
   });
   if (count === 0) throw conflict('This ride has already been taken or cancelled', 'RIDE_NOT_AVAILABLE');
 
+  // Joining a trip that meets at another spot nearby: the rider is picked up there, so the fare
+  // is measured from there, but never more than the price they were shown when booking.
+  let walk: Prisma.InputJsonObject | undefined;
+  if (ride.pickupSpotCode !== pool.meetingSpotCode) {
+    const distanceM = manhattanM(pool.meetingSpot, spots.dropoff);
+    const { subtotalPaisa } = calculateFare(distanceM, ride.seats, false);
+    if (subtotalPaisa < ride.subtotalPaisa) {
+      await tx.rideRequest.update({ where: { id: ride.id }, data: { distanceM, subtotalPaisa } });
+    }
+    walk = {
+      meetingSpot: pool.meetingSpotCode,
+      walkM: manhattanM(spots.pickup, pool.meetingSpot),
+      quotedSubtotalPaisa: ride.subtotalPaisa,
+      subtotalPaisa: Math.min(subtotalPaisa, ride.subtotalPaisa),
+    };
+  }
+
   await recordEvent(tx, {
     type: 'RIDE_MATCHED',
     rideRequestId: ride.id,
@@ -115,9 +146,17 @@ async function joinPool(tx: Tx, ride: RideRequest, poolId: string, actorId: stri
     actorId,
     fromStatus: 'REQUESTED',
     toStatus: 'MATCHED',
-    data: { seats: ride.seats, sharedWith: pool.members.length },
+    data: { seats: ride.seats, sharedWith: pool.members.length, ...walk },
   });
   return 'JOINED';
+}
+
+async function rideSpots(db: Tx, ride: RideRequest) {
+  const [pickup, dropoff] = await Promise.all([
+    db.spot.findUniqueOrThrow({ where: { code: ride.pickupSpotCode } }),
+    db.spot.findUniqueOrThrow({ where: { code: ride.dropoffSpotCode } }),
+  ]);
+  return { pickup, dropoff };
 }
 
 // Called right after a passenger requests a ride: try to put them in an OPEN pool that's
@@ -133,16 +172,14 @@ export async function tryAutoMatch(ride: RideRequest): Promise<boolean> {
       // Only Teslas whose driver lets compatible riders join automatically.
       vehicle: { isOnline: true, autoAccept: true },
     },
-    include: { members: { where: activeMembers, include: { dropoff: true } } },
+    include: poolForMatchingInclude,
   });
-  const dropoff = await prisma.zone.findUniqueOrThrow({ where: { code: ride.dropoffZone } });
+  const spots = await rideSpots(prisma, ride);
 
   // Pre-filter without locks (cheap). joinPool re-checks everything under the lock.
   const worthTrying = rankPools(
     candidates.filter(
-      (p) =>
-        p.seatsTaken + ride.seats <= p.capacity &&
-        isCompatible(asCandidate(ride, dropoff), forMatching(p)),
+      (p) => p.seatsTaken + ride.seats <= p.capacity && isCompatible(asCandidate(ride, spots), forMatching(p)),
     ),
   );
 
@@ -164,6 +201,7 @@ export async function tryAutoMatch(ride: RideRequest): Promise<boolean> {
 const joinFailures: Record<Exclude<JoinResult, 'JOINED'>, AppError> = {
   POOL_CLOSED: conflict('Your current trip is no longer taking passengers', 'POOL_CLOSED'),
   DRIVER_PICKS: conflict('This driver picks his riders himself', 'DRIVER_PICKS'), // only for automatic joins
+  TOO_FAR_TO_WALK: conflict('This rider is too far from where your riders are meeting you', 'PICKUP_TOO_FAR'),
   RIDING_ALONE: conflict('Someone in this trip chose to ride alone, so it can’t be shared', 'RIDING_ALONE'),
   SAME_GENDER_ONLY: conflict('This would break a same-gender request in this trip', 'SAME_GENDER_ONLY'),
   INCOMPATIBLE: conflict('This passenger is not heading the same way as your current passengers', 'INCOMPATIBLE_ROUTE'),
@@ -194,15 +232,21 @@ export async function acceptRequest(driverId: string, rideId: string) {
       });
 
       if (!pool) {
+        // The first rider's pickup spot becomes where everyone on this trip meets the Tesla.
         pool = await tx.pool.create({
-          data: { vehicleId: vehicle.id, pickupZone: ride.pickupZone, capacity: vehicle.capacity },
+          data: {
+            vehicleId: vehicle.id,
+            pickupZone: ride.pickupZone,
+            meetingSpotCode: ride.pickupSpotCode,
+            capacity: vehicle.capacity,
+          },
         });
         await recordEvent(tx, {
           type: 'POOL_OPENED',
           poolId: pool.id,
           actorId: driverId,
           toStatus: 'OPEN',
-          data: { vehicle: vehicle.name, capacity: vehicle.capacity, pickupZone: ride.pickupZone },
+          data: { vehicle: vehicle.name, capacity: vehicle.capacity, pickupZone: ride.pickupZone, meetingSpot: ride.pickupSpotCode },
         });
       }
 
@@ -404,9 +448,14 @@ export async function dropOffPassenger(driverId: string, rideId: string, zoneCod
     const dropoff = zones.find((z) => z.code === ride.dropoffZone)!;
     const stop = zonesOnTheWay(pickup, dropoff, zones).find((z) => z.code === at);
     if (!stop) throw new AppError(400, 'NOT_ON_THE_WAY', 'That area is not on the way to this passenger’s destination');
+    // From where they were picked up (the trip's meeting spot) to that area's main spot.
+    const [from, to] = await Promise.all([
+      prisma.spot.findUniqueOrThrow({ where: { code: pool.meetingSpotCode } }),
+      prisma.spot.findFirstOrThrow({ where: { zoneCode: stop.code, isMain: true } }),
+    ]);
     // Same pool discount as at the start: getting off doesn't change whether they shared.
     const shared = (ride.poolDiscountPaisa ?? 0) > 0;
-    fare = earlyDropOffFare(manhattanKm(pickup, stop), ride.seats, shared, ride.farePaisa ?? ride.subtotalPaisa);
+    fare = earlyDropOffFare(manhattanM(from, to), ride.seats, shared, ride.farePaisa ?? ride.subtotalPaisa);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -422,7 +471,7 @@ export async function dropOffPassenger(driverId: string, rideId: string, zoneCod
         droppedOffZone: at,
         completedAt: now,
         ...(fare && {
-          distanceKm: fare.distanceKm,
+          distanceM: fare.distanceM,
           subtotalPaisa: fare.subtotalPaisa,
           poolDiscountPaisa: fare.poolDiscountPaisa,
           farePaisa: fare.farePaisa,
@@ -439,7 +488,7 @@ export async function dropOffPassenger(driverId: string, rideId: string, zoneCod
       fromStatus: 'STARTED',
       toStatus: 'COMPLETED',
       data: fare
-        ? { at, early: true, bookedTo: ride.dropoffZone, bookedFarePaisa: ride.farePaisa, farePaisa: fare.farePaisa, distanceKm: fare.distanceKm }
+        ? { at, early: true, bookedTo: ride.dropoffZone, bookedFarePaisa: ride.farePaisa, farePaisa: fare.farePaisa, distanceM: fare.distanceM }
         : { at, early: false, farePaisa: ride.farePaisa },
     });
 

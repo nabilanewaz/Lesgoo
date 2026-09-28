@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import useSWR from 'swr';
-import { taka } from '@/lib/format';
+import { km, taka } from '@/lib/format';
 import { homeFor, useSession } from '@/lib/session';
 import type { Estimate } from '@/lib/types';
 import { Wheel } from './art/Wheel';
@@ -28,7 +28,7 @@ function Ticket({ destination, estimate }: { destination: string; estimate?: Est
       <header className={styles.ticketHead}>
         <span className={styles.ticketLabel}>To</span>
         <strong>{destination}</strong>
-        {estimate && <span>from Banani · {estimate.solo.distanceKm} km</span>}
+        {estimate && <span>from Banani · {km(estimate.solo.distanceM)}</span>}
       </header>
       {estimate ? (
         <>

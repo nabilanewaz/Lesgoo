@@ -1,10 +1,11 @@
 // Fare model, DESIGN.md §5:
 //   passengerFare = baseFare + distanceCharge - poolDiscount
 // All amounts are integer paisa (৳1 = 100 paisa). No floats anywhere.
+// Distance is charged per started 100 m, like a taxi meter: ৳20/km = ৳2 per 100 m.
 
 export type FareRules = {
   baseFarePaisa: number; // per seat
-  perKmPaisa: number; // per seat per km
+  perKmPaisa: number; // per seat per km; a multiple of 10 so every 100 m is whole paisa
   poolDiscountPct: number; // whole percent, applied only if the trip was actually shared
 };
 
@@ -14,8 +15,10 @@ export const FARE_RULES: FareRules = {
   poolDiscountPct: 25,
 };
 
+export const METRES_PER_STEP = 100;
+
 export type FareBreakdown = {
-  distanceKm: number;
+  distanceM: number;
   seats: number;
   baseFarePaisa: number;
   distanceChargePaisa: number;
@@ -37,21 +40,22 @@ export function poolDiscountPaisa(subtotalPaisa: number, shared: boolean, rules:
 }
 
 export function calculateFare(
-  distanceKm: number,
+  distanceM: number,
   seats: number,
   shared: boolean,
   rules: FareRules = FARE_RULES,
 ): FareBreakdown {
-  assertWholeNumber('distanceKm', distanceKm, 1);
+  assertWholeNumber('distanceM', distanceM, 1);
   assertWholeNumber('seats', seats, 1);
 
+  const steps = Math.ceil(distanceM / METRES_PER_STEP); // a started 100 m counts in full
   const baseFare = rules.baseFarePaisa * seats;
-  const distanceCharge = rules.perKmPaisa * distanceKm * seats;
+  const distanceCharge = ((rules.perKmPaisa * steps) / (1000 / METRES_PER_STEP)) * seats;
   const subtotal = baseFare + distanceCharge;
   const discount = poolDiscountPaisa(subtotal, shared, rules);
 
   return {
-    distanceKm,
+    distanceM,
     seats,
     baseFarePaisa: baseFare,
     distanceChargePaisa: distanceCharge,
@@ -62,23 +66,23 @@ export function calculateFare(
 }
 
 // What the passenger sees before booking: the price alone, and the price if someone shares.
-export function estimateFare(distanceKm: number, seats: number, rules: FareRules = FARE_RULES) {
+export function estimateFare(distanceM: number, seats: number, rules: FareRules = FARE_RULES) {
   return {
-    solo: calculateFare(distanceKm, seats, false, rules),
-    pooled: calculateFare(distanceKm, seats, true, rules),
+    solo: calculateFare(distanceM, seats, false, rules),
+    pooled: calculateFare(distanceM, seats, true, rules),
   };
 }
 
 // A passenger who gets off early pays for the part they rode (like Uber), keeping the pool
 // discount they had at the start, and never more than the fare fixed when the trip started.
 export function earlyDropOffFare(
-  riddenKm: number,
+  riddenM: number,
   seats: number,
   shared: boolean,
   fareAtStartPaisa: number,
   rules: FareRules = FARE_RULES,
 ): FareBreakdown {
-  const ridden = calculateFare(riddenKm, seats, shared, rules);
+  const ridden = calculateFare(riddenM, seats, shared, rules);
   if (ridden.farePaisa <= fareAtStartPaisa) return ridden;
   return { ...ridden, farePaisa: fareAtStartPaisa, poolDiscountPaisa: ridden.subtotalPaisa - fareAtStartPaisa };
 }

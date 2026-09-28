@@ -1,21 +1,21 @@
 'use client';
 
 import useSWR from 'swr';
-import { taka } from '@/lib/format';
+import { km, taka } from '@/lib/format';
 import type { Estimate } from '@/lib/types';
 import { Alert, Loading } from '../ui/Feedback';
-import type { Trip } from './TripFields';
+import type { FullTrip } from './TripFields';
 import styles from './PriceCompare.module.css';
 
 // "Alone" vs "If you share" prices for a trip, straight from the API's fare model.
-export function PriceCompare({ trip }: { trip: Trip }) {
+export function PriceCompare({ trip }: { trip: FullTrip }) {
   const sameZone = trip.pickup === trip.dropoff;
   const { data, error } = useSWR<{ estimate: Estimate }>(
-    sameZone ? null : `/rides/estimate?pickupZone=${trip.pickup}&dropoffZone=${trip.dropoff}&seats=${trip.seats}`,
+    sameZone ? null : `/rides/estimate?pickupSpot=${trip.pickupSpot}&dropoffSpot=${trip.dropoffSpot}&seats=${trip.seats}`,
     { keepPreviousData: true },
   );
 
-  if (sameZone) return <Alert tone="info">Pick a destination different from where you start.</Alert>;
+  if (sameZone) return <Alert tone="info">Pick a destination in a different area from where you start.</Alert>;
   if (error) return <Alert>{error.message}</Alert>;
   if (!data) return <Loading label="Asking the rickshaw-wallahs…" />;
 
@@ -32,7 +32,7 @@ export function PriceCompare({ trip }: { trip: Trip }) {
         <span className={styles.save}>save {taka(pooled.poolDiscountPaisa)}</span>
       </div>
       <p className={styles.math}>
-        {taka(solo.baseFarePaisa)} base + {taka(solo.distanceChargePaisa)} for {solo.distanceKm} km
+        {taka(solo.baseFarePaisa)} base + {taka(solo.distanceChargePaisa)} for {km(solo.distanceM)}
         {trip.seats > 1 ? ` (${trip.seats} seats)` : ''} · discount only if your Tesla is shared
       </p>
     </div>

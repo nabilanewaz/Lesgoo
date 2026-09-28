@@ -1,29 +1,39 @@
 import { Prisma } from '@prisma/client';
 import { calculateFare, estimateFare } from '../../domain/fare';
-import { manhattanKm } from '../../domain/geo';
+import { manhattanM } from '../../domain/geo';
 import { ACTIVE_RIDE_STATUSES, passengerCanCancel } from '../../domain/ride-status';
 import { badRequest, conflict, notFound } from '../../lib/errors';
 import { recordEvent } from '../../lib/events';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { lockPool, releaseSeats, tryAutoMatch } from '../pools/pools.service';
-import { getTripZones } from '../zones/zones.service';
-import type { RequestRideInput } from './rides.schemas';
+import { getTripSpots, spotRef } from '../zones/zones.service';
+import type { EstimateQuery, RequestRideInput } from './rides.schemas';
 import { passengerRideInclude, toPassengerRide } from './rides.view';
 
-export async function estimateTrip(pickupCode: string, dropoffCode: string, seats: number) {
-  const { pickup, dropoff } = await getTripZones(pickupCode, dropoffCode);
+type TripInput = { pickupZone?: string; pickupSpot?: string; dropoffZone?: string; dropoffSpot?: string };
+const tripSpots = (input: TripInput) =>
+  getTripSpots({ zone: input.pickupZone, spot: input.pickupSpot }, { zone: input.dropoffZone, spot: input.dropoffSpot });
+
+const endView = (spot: Awaited<ReturnType<typeof tripSpots>>['pickup']) => ({
+  code: spot.zone.code,
+  name: spot.zone.name,
+  spot: spotRef(spot),
+});
+
+export async function estimateTrip(input: EstimateQuery) {
+  const { pickup, dropoff } = await tripSpots(input);
   return {
-    pickup: { code: pickup.code, name: pickup.name },
-    dropoff: { code: dropoff.code, name: dropoff.name },
-    ...estimateFare(manhattanKm(pickup, dropoff), seats),
+    pickup: endView(pickup),
+    dropoff: endView(dropoff),
+    ...estimateFare(manhattanM(pickup, dropoff), input.seats),
   };
 }
 
 export async function requestRide(passengerId: string, input: RequestRideInput) {
-  const { pickup, dropoff } = await getTripZones(input.pickupZone, input.dropoffZone);
-  const distanceKm = manhattanKm(pickup, dropoff);
-  const { subtotalPaisa } = calculateFare(distanceKm, input.seats, false);
+  const { pickup, dropoff } = await tripSpots(input);
+  const distanceM = manhattanM(pickup, dropoff);
+  const { subtotalPaisa } = calculateFare(distanceM, input.seats, false);
 
   // The rider's declared gender is snapshotted onto the ride for matching and history.
   const { gender } = await prisma.user.findUniqueOrThrow({ where: { id: passengerId }, select: { gender: true } });
@@ -39,10 +49,12 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
       const created = await tx.rideRequest.create({
         data: {
           passengerId,
-          pickupZone: pickup.code,
-          dropoffZone: dropoff.code,
+          pickupZone: pickup.zoneCode,
+          dropoffZone: dropoff.zoneCode,
+          pickupSpotCode: pickup.code,
+          dropoffSpotCode: dropoff.code,
           seats: input.seats,
-          distanceKm,
+          distanceM,
           subtotalPaisa,
           paymentMethod: input.paymentMethod,
           shareRide: input.shareRide,
@@ -60,7 +72,7 @@ export async function requestRide(passengerId: string, input: RequestRideInput) 
           pickup: pickup.code,
           dropoff: dropoff.code,
           seats: input.seats,
-          distanceKm,
+          distanceM,
           subtotalPaisa,
           shareRide: input.shareRide,
           sameGenderOnly: input.sameGenderOnly,

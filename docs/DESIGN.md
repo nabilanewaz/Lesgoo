@@ -38,18 +38,32 @@ This document was written before implementation. When the code diverges, this fi
 | DHANMONDI | Dhanmondi | -3 | -5 |
 | MOTIJHEEL | Motijheel | 1 | -7 |
 
+### Pickup and drop-off spots
+"Pickup at Banani" isn't enough for a driver: Banani is a whole neighbourhood. So each area has **2–6 spots**, which are well-known landmarks that CNG and rickshaw drivers already stop at: bus stops, circles, markets. There are 30 in total, stored in the `spots` table and inserted by the migration.
+- **Names the driver understands:** each spot is shown **Bangla first, English underneath** (for example **কাকলী** · Kakoli bus stop, Banani), never as an address or coordinates.
+- **Real coordinates, checked:** every spot's latitude and longitude came from OpenStreetMap (Nominatim and Overpass). Where OSM doesn't map the landmark itself (the Amtoli junction, Gulshan 1 Circle), we used the bus stop right beside it. Older names people still use are kept in the label, like "Evercare (Apollo) Hospital", which was Apollo until 2020.
+- **Coordinates only feed maps links.** The driver's **🧭 রাস্তা দেখুন · Navigate** button opens Google Maps with driving directions (with Bangla voice), so we don't build a map of our own. Passengers get an "Open in Maps" link to their meeting spot.
+- **Fares by spot, not just by area.** Two riders in the same area can be different distances from their destination (Chairman Bari is 680 m south of Kakoli). Each spot has a position on the same grid, in metres. The area's **main spot** sits exactly on the area's point, and the others are offset by their **real** distance east and north of it. So:
+  - fares between main spots are exactly what they were (Nusrat's Kakoli → Amtoli is still 2 km, ৳52.50 shared);
+  - other spots are priced by their true offset (Chairman Bari → Amtoli: 50 + 1320 = 1370 m).
+- **A trip inside one area isn't offered.** It's too short for a Tesla, and the grid can't price it fairly.
+- **Only an area given (older links, API calls)** means that area's main spot.
+- **Limitation:** distance is estimated on the grid, not measured along real roads. A real launch would use a routing service (Google Distance Matrix or OSRM).
+
 ## 4. Matching rule
 
 A new request **R** can join an existing pool **P** only when all of these are true:
 
 1. P is `OPEN`: a driver has accepted it and hasn't arrived yet.
-2. R starts in the **same pickup zone** as P.
-3. R's destination is **within 2 km** (Manhattan distance) of the destination of **every** active member of P. Everyone has to be heading the same way.
+2. R starts in the **same pickup zone** as P, and R's pickup spot is **within a 500 m walk** (Manhattan, along the streets) of P's **meeting spot**. The meeting spot is the first rider's pickup spot, and everyone on the trip meets the Tesla there, as with UberX Share or Via. Anyone further away would add a stop, so they wait for another Tesla.
+3. R's destination spot is **within 2 km** (Manhattan distance) of the destination spot of **every** active member of P. Everyone has to be heading the same way.
 4. P has enough free seats: `seats_taken + R.seats <= capacity`. The database checks this atomically (see §8).
 
 If more than one pool qualifies, R joins the **fullest** one, and ties go to the oldest. Filling a Tesla before starting another uses fewer vehicles.
 
 **Applied to the story:** Nusrat goes Banani → Mohakhali (0,-2). Rafiq goes Banani → Gulshan 1 (1,-2). They have the same pickup zone, and their destinations are `|0-1| + |-2-(-2)| = 1 km` apart, which is ≤ 2 → **they can pool**. If Shirin went Banani → Gulshan 2 (1,0) instead, she would be 3 km from Nusrat's destination and would **not** be matched with them.
+
+**The walk to the meeting spot never costs more.** A rider who joins a trip meeting at another spot nearby is picked up there, so their fare is measured from the meeting spot, **but never more than the price they were shown when booking**. If the meeting spot is nearer their destination, they pay the lower fare. Both prices are recorded in the `RIDE_MATCHED` event. A driver who tries to accept someone too far away is told *"This rider is too far from where your riders are meeting you"* (`PICKUP_TOO_FAR`).
 
 **How a request gets into a pool:**
 - **Automatically:** when a request is created and a compatible open pool exists, it joins right away and becomes `MATCHED`.
@@ -93,8 +107,9 @@ We considered automatically pulling every compatible waiting rider into a trip w
 All money is stored as **integer paisa** (৳1 = 100 paisa) in `INTEGER` columns.
 
 ```
-distanceKm     = manhattan(pickup, dropoff)
-subtotal       = (BASE_FARE + PER_KM × distanceKm) × seats
+distanceM      = manhattan(pickup spot, dropoff spot)          in metres (§3)
+steps          = ceil(distanceM / 100)                         a started 100 m counts in full
+subtotal       = (BASE_FARE + PER_KM / 10 × steps) × seats
 poolDiscount   = floor(subtotal × POOL_DISCOUNT_PCT / 100)   if the trip was shared, else 0
 passengerFare  = subtotal − poolDiscount
 ```
@@ -102,7 +117,7 @@ passengerFare  = subtotal − poolDiscount
 | Constant | Value |
 |---|---|
 | BASE_FARE | 3000 paisa (৳30) |
-| PER_KM | 2000 paisa (৳20/km) |
+| PER_KM | 2000 paisa (৳20/km), charged per **started 100 m** (৳2 each, like a taxi meter) |
 | POOL_DISCOUNT_PCT | 25 |
 
 A trip counts as **shared** if the pool has 2 or more active requests when it `STARTED`.
@@ -116,7 +131,7 @@ A trip counts as **shared** if the pool has 2 or more active requests when it `S
 
 If they had each ridden alone, the fares would be ৳70 and ৳90.
 
-**Getting off early.** If a passenger gets off before their destination, they pay for the part they rode, as Uber does: the fare is recalculated for the km from pickup to where they got off, with the same pool discount they had at the start, and it is **never more than the fare fixed at the start**. Rafiq, pooled, booked to Gulshan 1 (৳67.50) but got off at Mohakhali: 2 km, 7000 − 1750 = **5250 (৳52.50)**. Alone to Gulshan 1 (৳90) but off at Gulshan 2: 1 km = **5000 (৳50)**. The booked destination and fare stay in the audit trail.
+**Getting off early.** If a passenger gets off before their destination, they pay for the part they rode, as Uber does: the fare is recalculated for the distance from where they were picked up (the trip's meeting spot) to the main spot of the area where they got off, with the same pool discount they had at the start, and it is **never more than the fare fixed at the start**. Rafiq, pooled, booked to Gulshan 1 (৳67.50) but got off at Mohakhali: 2 km, 7000 − 1750 = **5250 (৳52.50)**. Alone to Gulshan 1 (৳90) but off at Gulshan 2: 1 km = **5000 (৳50)**. The booked destination and fare stay in the audit trail.
 
 **Breakdown.** If the Tesla breaks down, passengers still on board pay **nothing**. Uber charges for the distance travelled, but that needs the driver to say where the breakdown happened, and the service failed the rider, not the other way round. Passengers already dropped off keep their fare. The trade-off is that the driver earns nothing for the unfinished part of the trip.
 
@@ -192,6 +207,9 @@ erDiagram
     users ||--o{ ride_requests : "books"
     zones ||--o{ ride_requests : "pickup / dropoff"
     zones ||--o{ pools : "pickup"
+    zones ||--o{ spots : "contains"
+    spots ||--o{ ride_requests : "pickup / dropoff spot"
+    spots ||--o{ pools : "meeting spot"
     vehicles ||--o{ pools : "runs"
     pools ||--o{ ride_requests : "members"
     ride_requests ||--o{ ride_events : "history"
@@ -220,10 +238,22 @@ erDiagram
         int x_km
         int y_km
     }
+    spots {
+        text code PK
+        text zone_code FK
+        text name "Kakoli bus stop"
+        text name_bn "কাকলী"
+        float lat "for maps links only"
+        float lon
+        int x_m "fare grid, metres"
+        int y_m
+        boolean is_main "one per zone"
+    }
     pools {
         uuid id PK
         uuid vehicle_id FK
         text pickup_zone FK
+        text meeting_spot FK "first rider's spot"
         enum status
         smallint capacity "snapshot of vehicle"
         smallint seats_taken "CHECK 0..capacity"
@@ -239,9 +269,11 @@ erDiagram
         uuid pool_id FK "nullable"
         text pickup_zone FK
         text dropoff_zone FK
+        text pickup_spot FK
+        text dropoff_spot FK
         smallint seats "CHECK 1..3"
         enum status
-        int distance_km
+        int distance_m
         int subtotal_paisa
         int pool_discount_paisa "set at start"
         int fare_paisa "set at start"
@@ -276,6 +308,7 @@ erDiagram
 - Partial unique index: **one active pool per vehicle**, `UNIQUE (vehicle_id) WHERE status IN ('OPEN','DRIVER_ARRIVED','STARTED')`.
 - Partial unique index: **one active request per passenger**, `UNIQUE (passenger_id) WHERE status NOT IN ('COMPLETED','CANCELLED')`.
 - `ride_requests_dropped_off_check`: only a `COMPLETED` ride has a `dropped_off_zone`, and it is never the pickup zone.
+- `spots_one_main_per_zone`: partial unique index, `UNIQUE (zone_code) WHERE is_main`. An area given without a spot always means exactly one place.
 - `ride_requests (status, pickup_zone)` index for the driver's feed. `ride_requests (passenger_id, created_at DESC)` index for passenger history. `ride_events (ride_request_id)` and `ride_events (pool_id)` indexes for history lookups.
 
 ## 8. Concurrency: the last seat

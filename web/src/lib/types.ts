@@ -12,11 +12,18 @@ export type User = {
   vehicle?: { id: string; name: string; plate: string; capacity: number; isOnline: boolean } | null;
 };
 
-export type Zone = { code: string; name: string; xKm: number; yKm: number };
+// A landmark inside an area where a Tesla stops. The Bangla name is what drivers read first;
+// lat/lon only feed the maps links.
+export type SpotRef = { code: string; name: string; nameBn: string; lat: number; lon: number };
+export type Spot = SpotRef & { isMain: boolean };
+
+export type Zone = { code: string; name: string; xKm: number; yKm: number; spots: Spot[] };
 export type ZoneRef = { code: string; name: string };
+// An area plus the exact spot in it.
+export type Place = ZoneRef & { spot: SpotRef };
 
 export type FareBreakdown = {
-  distanceKm: number;
+  distanceM: number;
   seats: number;
   baseFarePaisa: number;
   distanceChargePaisa: number;
@@ -25,7 +32,7 @@ export type FareBreakdown = {
   farePaisa: number;
 };
 
-export type Estimate = { pickup: ZoneRef; dropoff: ZoneRef; solo: FareBreakdown; pooled: FareBreakdown };
+export type Estimate = { pickup: Place; dropoff: Place; solo: FareBreakdown; pooled: FareBreakdown };
 
 export type RideStatus = 'REQUESTED' | 'MATCHED' | 'DRIVER_ARRIVED' | 'STARTED' | 'COMPLETED' | 'CANCELLED';
 export type PoolStatus = 'OPEN' | 'DRIVER_ARRIVED' | 'STARTED' | 'COMPLETED' | 'CANCELLED';
@@ -33,11 +40,11 @@ export type PoolStatus = 'OPEN' | 'DRIVER_ARRIVED' | 'STARTED' | 'COMPLETED' | '
 export type PassengerRide = {
   id: string;
   status: RideStatus;
-  pickup: ZoneRef;
-  dropoff: ZoneRef;
+  pickup: Place;
+  dropoff: Place;
   droppedOff: ZoneRef | null; // where they actually got off; differs from dropoff if early
   seats: number;
-  distanceKm: number;
+  distanceM: number;
   paymentMethod: 'CASH' | 'TESLAPAY';
   shareRide: boolean;
   sameGenderOnly: boolean;
@@ -51,6 +58,7 @@ export type PassengerRide = {
   pool: {
     id: string;
     status: PoolStatus;
+    meetingSpot: SpotRef; // where to meet the Tesla
     vehicle: { name: string; plate: string };
     driver: { name: string };
     sharedWith: number;
@@ -68,7 +76,8 @@ export type RideEvent = { id: string; type: string; fromStatus: string | null; t
 export type DriverPassenger = {
   rideId: string;
   name: string;
-  dropoff: ZoneRef;
+  dropoff: Place;
+  pickupSpot: SpotRef; // where they booked from (they walk to the meeting spot if different)
   seats: number;
   status: RideStatus;
   paymentMethod: 'CASH' | 'TESLAPAY';
@@ -86,6 +95,7 @@ export type DriverPool = {
   id: string;
   status: PoolStatus;
   pickup: ZoneRef;
+  meetingSpot: SpotRef; // where the driver picks everyone up
   capacity: number;
   seatsTaken: number;
   seatsLeft: number;
@@ -106,10 +116,10 @@ export type DriverStatus = {
 export type FeedRequest = {
   rideId: string;
   passengerName: string;
-  pickup: ZoneRef;
-  dropoff: ZoneRef;
+  pickup: Place;
+  dropoff: Place;
   seats: number;
-  distanceKm: number;
+  distanceM: number;
   shareRide: boolean;
   sameGenderOnly: boolean;
   gender: Gender;

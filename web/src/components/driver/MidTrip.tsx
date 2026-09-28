@@ -44,7 +44,7 @@ export function DropOffButtons({
   return (
     <div className={styles.dropOff}>
       <Button variant="secondary" full className={styles.big} disabled={busy} loading={loading} onClick={() => onDropOff()}>
-        <span aria-hidden>✅</span> <span lang="bn">পৌঁছেছে</span> · Reached {passenger.dropoff.name}
+        <span aria-hidden>✅</span> <span lang="bn">পৌঁছেছে</span> · Reached {passenger.dropoff.spot.name}
       </Button>
       {passenger.stopsOnTheWay.length > 0 && (
         <Button variant="ghost" full disabled={busy} onClick={() => setAskWhere(true)}>
