@@ -1,3 +1,10 @@
+# Dhaka Tesla Pool: `docker compose up` runs everything.
+#   http://localhost:3000   the app (web)      demo logins in README.md, password rickshaw123
+#   http://localhost:4000   the REST API       (the web app forwards /api/* to it)
+#   localhost:5432          PostgreSQL
+# Start order is enforced by health checks: db healthy -> api migrates, seeds, is healthy -> web.
+# Ports can be moved if yours are taken, e.g. WEB_PORT=8080 docker compose up.
+
 services:
   db:
     image: postgres:17-alpine
@@ -6,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tesla}
       POSTGRES_DB: ${POSTGRES_DB:-tesla_pool}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -14,6 +21,34 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  api:
+    build: ./api
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tesla}:${POSTGRES_PASSWORD:-tesla}@db:5432/${POSTGRES_DB:-tesla_pool}?schema=public
+      # Demo default only. Set your own long random JWT_SECRET for anything beyond a local demo.
+      JWT_SECRET: ${JWT_SECRET:-local-demo-only-secret-change-me}
+      # Plain http://localhost; set true behind HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        API_URL: http://api:4000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   db-data:
