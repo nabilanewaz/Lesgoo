@@ -20,7 +20,7 @@ A ride-pooling MVP for Dhaka's three-wheeled "Teslas". **Nusrat** is late and bo
 Requirements: **Docker** with Compose v2. Nothing else.
 
 ```bash
-git clone <repo-url> tesla-pool && cd tesla-pool
+git clone https://github.com/nabilanewaz/Lesgoo.git && cd Lesgoo
 docker compose up --build
 ```
 
