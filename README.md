@@ -11,7 +11,7 @@ A ride-pooling MVP for Dhaka's three-wheeled "Teslas". **Nusrat** is late and bo
 | 📐 **Design document** | [docs/DESIGN.md](docs/DESIGN.md): assumptions, matching rule, fare model, lifecycle, schema, concurrency |
 | 📈 **Scaling bonus** | [docs/SCALING.md](docs/SCALING.md): "If Oi Tesla goes viral" |
 
-**Contents:** [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Database](#database) · [Tech choices](#tech-choices) · [Project structure](#project-structure) · [Environment](#environment-variables) · [Local development](#local-development-without-docker) · [Tests](#tests) · [API](#api-overview) · [Decisions](#key-decisions-and-trade-offs) · [Limitations](#known-limitations) · [Next](#next-improvements) · [Git workflow](#git-workflow) · [AI usage](#ai-usage)
+**Contents:** [Quick start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Database](#database) · [Tech choices](#tech-choices) · [Project structure](#project-structure) · [Environment](#environment-variables) · [Local development](#local-development-without-docker-for-the-apps) · [Tests](#tests) · [API](#api-overview) · [Decisions](#key-decisions-and-trade-offs) · [Limitations](#known-limitations) · [Next](#next-improvements) · [Git workflow](#git-workflow) · [AI usage](#ai-usage)
 
 ---
 
