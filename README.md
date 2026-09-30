@@ -6,7 +6,7 @@ A ride-pooling MVP for Dhaka's three-wheeled "Teslas". **Nusrat** is late and bo
 
 | | |
 |---|---|
-| 🎬 **Demo video** | _link added at release_ |
+| 🎬 **Demo video** | **[Watch the walkthrough video](https://drive.google.com/file/d/135-cn4zuYoQ1S5ZlSo1QW_bv7YIaTzti/view?usp=sharing)**: problem, engineering, and a live product tour |
 | 🌐 **Live deployment** | **https://tesla-pool-indol.vercel.app**. Sign in with any [demo account](#quick-start). API: https://tesla-pool-api.vercel.app/api/health |
 | 📐 **Design document** | [docs/DESIGN.md](docs/DESIGN.md): assumptions, matching rule, fare model, lifecycle, schema, concurrency |
 | 📈 **Scaling bonus** | [docs/SCALING.md](docs/SCALING.md): "If Oi Tesla goes viral" |
