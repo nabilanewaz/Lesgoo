@@ -3,7 +3,9 @@
 // hand-written at the bottom of the migration SQL.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native: this machine (and the Docker image); rhel-openssl-3.0.x: Vercel's Node.js runtime.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

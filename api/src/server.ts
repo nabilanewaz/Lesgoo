@@ -1,9 +1,15 @@
+import type { Express } from 'express';
 import { env } from './config/env';
-import { createApp } from './app';
+import { createApp } from './create-app';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 
-const server = createApp().listen(env.PORT, () => {
+// The one entry point: Docker, `npm run dev` and Vercel all start the API here (Vercel's Express
+// support runs this file and takes over the port). src/create-app.ts only builds the app.
+// Vercel only accepts an entry file that imports express itself, hence the typed `app` below.
+const app: Express = createApp();
+
+const server = app.listen(env.PORT, () => {
   logger.info(`Tesla Pool API listening on port ${env.PORT}`);
 });
 

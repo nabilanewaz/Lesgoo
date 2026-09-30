@@ -13,8 +13,8 @@ This document was written before implementation. When the code diverges, this fi
 
 ## 2. Assumptions
 
-1. **Geography is a fixed list of zones.** Every zone has approximate coordinates on a km grid, with Banani at the origin. There are no real maps or routing.
-2. **Distance is Manhattan distance** between zone coordinates, in whole km: `|x1-x2| + |y1-y2|`. Dhaka roads are closer to a grid than to a straight line, and you can work the result out by hand.
+1. **Geography is a fixed list of zones, each with a few landmark spots.** Every zone has approximate coordinates on a km grid, with Banani at the origin, and each spot sits on the same grid in metres (§3). There is no real routing; the real coordinates only open maps apps.
+2. **Distance is Manhattan distance** on that grid: `|x1-x2| + |y1-y2|`. Dhaka roads are closer to a grid than to a straight line, and you can work the result out by hand. Between main spots it's whole km (Kakoli → Amtoli = 2 km).
 3. **Drivers cannot sign up themselves.** In real life a driver and vehicle have to be verified first, so drivers and their Teslas come from seed data. Passengers can sign up.
 4. **One driver has one Tesla, and one Tesla has at most one active pool.**
 5. **A passenger has at most one active ride request.** Nobody books two rickshaws at once.
@@ -346,7 +346,7 @@ The vehicle lock is only needed for going online/offline and for accepting. Both
 
 Status transitions use the same pattern: `UPDATE ... WHERE id = $id AND status = $expected`. If two actions race (for example a double-clicked "Start trip"), exactly one of them succeeds and the other gets a `409`.
 
-**At larger scale:** hot pools in the same zone would compete for row locks. The next step would be to partition matching by zone, so each zone is handled by one worker reading from a queue. Requests would carry idempotency keys so retries are safe. The row-level guarantee here would stay the same. See the scaling notes in the README.
+**At larger scale:** hot pools in the same zone would compete for row locks. The next step would be to partition matching by zone, so each zone is handled by one worker reading from a queue. Requests would carry idempotency keys so retries are safe. The row-level guarantee here would stay the same. See [SCALING.md](SCALING.md).
 
 ## 9. Architecture
 
